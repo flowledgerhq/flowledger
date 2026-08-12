@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>FlowLedger — Ortak Kuyu Defteri</title>
+<meta name="theme-color" content="#16302c">
+<meta name="description" content="Ortak kuyu ve pompa sistemleri için adil elektrik paylaşım defteri.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --ink:#1c2b28;
+    --paper:#f2ede1;
+    --well:#254a44;
+    --well-deep:#16302c;
+    --copper:#b5652e;
+    --copper-2:#8f4c1f;
+    --warn:#a13d2b;
+    --good:#3d7a5c;
+    --line: rgba(28,43,40,0.14);
+    --mono: 'Courier New', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(1200px 600px at 50% -10%, rgba(37,74,68,0.08), transparent 60%), var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    min-height:100vh;
+    padding-bottom:70px;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px;}
+
+  header{
+    background:var(--well-deep);
+    color:var(--paper);
+    padding:22px 16px 20px;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute; inset:0;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 26px);
+    pointer-events:none;
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand img{width:34px;height:34px;border-radius:8px;}
+  .brand-text h1{font-size:19px;margin:0; letter-spacing:-0.01em;}
+  .brand-text .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#9fc2b8; margin:0;}
+  .group-pill{
+    margin-top:14px;
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--well); border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px; padding:9px 12px;
+    font-family:var(--mono); font-size:12.5px;
+  }
+  .group-pill button{
+    background:transparent; border:1px solid rgba(255,255,255,0.25); color:#e9c9a8;
+    font-family:var(--mono); font-size:10.5px; padding:5px 9px; border-radius:5px;
+    text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;
+  }
+
+  nav.tabs{
+    display:flex; gap:6px; margin-top:16px; padding-top:16px;
+  }
+  .wrap > nav.tabs{margin-top:16px;}
+  nav.tabs button{
+    flex:1;
+    font-family:var(--mono); font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em;
+    padding:11px 6px; border-radius:8px 8px 0 0;
+    border:1px solid var(--line); border-bottom:none;
+    background:#e9e1cf; color:#5a6b66; cursor:pointer;
+  }
+  nav.tabs button.active{background:#fbf8f0; color:var(--copper-2); font-weight:700;}
+
+  main{background:#fbf8f0; border:1px solid var(--line); border-radius:0 0 10px 10px; padding:18px; min-height:300px;}
+
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .card h2{
+    font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--copper-2);
+    margin:0 0 12px; font-family:var(--mono); font-weight:700;
+  }
+
+  label{display:block; font-size:12px; color:#5a6b66; margin-bottom:5px; font-family:var(--mono);}
+  input[type=text], input[type=number], select{
+    width:100%; font-family:var(--mono); font-size:16px; padding:11px 12px;
+    border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink);
+    -webkit-appearance:none;
+  }
+  input:focus, select:focus{outline:2px solid var(--well); outline-offset:1px;}
+  .field{margin-bottom:12px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .row3{display:grid; grid-template-columns:1fr 1fr auto; gap:10px; align-items:end;}
+
+  button.primary, button.action{
+    font-family:var(--mono); font-size:13px; font-weight:700; letter-spacing:0.04em;
+    text-transform:uppercase; border:none; border-radius:7px; padding:12px 16px; cursor:pointer;
+  }
+  button.primary{background:var(--well); color:#fff; width:100%;}
+  button.action{background:var(--copper); color:#fff;}
+  button:active{transform:scale(0.98);}
+  button:disabled{opacity:0.5;}
+
+  .entry{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:9px 0; border-bottom:1px dashed var(--line); font-family:var(--mono); font-size:13px;
+  }
+  .entry:last-child{border-bottom:none;}
+  .entry .diff{font-weight:700; color:var(--well);}
+
+  .person-block{border-left:3px solid var(--copper); padding-left:12px; margin-bottom:14px;}
+  .person-block h3{font-family:var(--serif); font-size:15.5px; margin:0 0 2px; display:flex; justify-content:space-between; align-items:baseline;}
+  .person-block .total{font-family:var(--mono); font-size:13px; color:var(--copper-2); font-weight:700;}
+
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px;}
+  th,td{text-align:left; padding:8px 5px; border-bottom:1px solid var(--line);}
+  th{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#5a6b66; font-weight:700;}
+  td.num, th.num{text-align:right;}
+  tr.total-row td{font-weight:700; border-top:2px solid var(--ink); border-bottom:none;}
+
+  .fark-alert{background:#f6e8d8; border:1px solid rgba(181,101,46,0.35); border-radius:8px; padding:12px; font-size:13px; margin-bottom:12px;}
+  .fark-alert b{color:var(--warn);}
+  .method-toggle{display:flex; gap:8px; margin-top:10px;}
+  .method-toggle button{
+    flex:1; background:#fff; border:1px solid var(--line); color:var(--ink);
+    font-weight:400; text-transform:none; font-size:12px; padding:9px; font-family:var(--mono); border-radius:6px; cursor:pointer;
+  }
+  .method-toggle button.active{background:var(--well); color:#fff; border-color:var(--well); font-weight:700;}
+
+  .period-card{margin-bottom:16px;}
+  .period-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-family:var(--mono); font-size:12px; color:#5a6b66; margin-bottom:10px;
+  }
+  .period-head .badge{
+    background:var(--good); color:#fff; padding:2px 8px; border-radius:20px; font-size:10px; text-transform:uppercase; letter-spacing:0.05em;
+  }
+  .period-head .badge.open{background:var(--copper);}
+
+  .empty{text-align:center; padding:22px 10px; color:#8a958f; font-size:13px; font-family:var(--mono);}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--well-deep); color:#fff; padding:11px 18px; border-radius:8px;
+    font-family:var(--mono); font-size:12.5px; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.25s;
+  }
+  .toast.show{opacity:1;}
+  .footnote{font-size:11px; color:#8a958f; text-align:center; margin-top:16px; font-family:var(--mono);}
+
+  .setup-screen{padding:40px 16px; text-align:center;}
+  .setup-screen h2{font-family:var(--serif); font-size:22px; margin-bottom:8px;}
+  .setup-screen p{color:#5a6b66; font-size:14px; line-height:1.6; margin-bottom:20px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <img src="icon-192.png" alt="FlowLedger">
+      <div class="brand-text">
+        <p class="eyebrow">Ortak Kuyu Defteri</p>
+        <h1>FlowLedger</h1>
+      </div>
+    </div>
+    <div class="group-pill">
+      <span>Grup: <b id="groupLabel">—</b></span>
+      <button onclick="changeGroup()">Değiştir</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button id="tabBtn-giris" class="active" onclick="switchTab('giris')">Giriş</button>
+    <button id="tabBtn-donem" onclick="switchTab('donem')">Bu Dönem</button>
+    <button id="tabBtn-gecmis" onclick="switchTab('gecmis')">Geçmiş</button>
+  </nav>
+
+  <main id="mainArea">
+    <div class="empty">Yükleniyor…</div>
+  </main>
+
+  <p class="footnote">FlowLedger · kayıtlar değiştirilemez, her giriş kalıcıdır</p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// ---- Supabase config ----
+const SUPABASE_URL = "https://cgacictzeziolwaalpyx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
+let currentTab = 'giris';
+let cache = { okumalar: [], donemler: [] };
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function changeGroup(){
+  const val = prompt('Grup kodu girin (paylaştığın kişilerle aynı kodu kullan):', kuyuKodu || '');
+  if(val && val.trim()){
+    kuyuKodu = val.trim();
+    localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
+    document.getElementById('groupLabel').textContent = kuyuKodu;
+    loadAll();
+  }
+}
+
+function switchTab(tab){
+  currentTab = tab;
+  ['giris','donem','gecmis'].forEach(t=>{
+    document.getElementById('tabBtn-'+t).classList.toggle('active', t===tab);
+  });
+  render();
+}
+
+async function loadAll(){
+  if(!kuyuKodu){ renderSetup(); return; }
+  document.getElementById('groupLabel').textContent = kuyuKodu;
+  try{
+    const [okumalarRes, donemlerRes] = await Promise.all([
+      sb.from('okumalar').select('*').eq('kuyu_kodu', kuyuKodu).order('created_at', {ascending:true}),
+      sb.from('donemler').select('*').eq('kuyu_kodu', kuyuKodu).order('created_at', {ascending:true})
+    ]);
+    if(okumalarRes.error) throw okumalarRes.error;
+    if(donemlerRes.error) throw donemlerRes.error;
+    cache.okumalar = okumalarRes.data || [];
+    cache.donemler = donemlerRes.data || [];
+    render();
+  }catch(e){
+    console.error(e);
+    document.getElementById('mainArea').innerHTML = `<div class="empty">Veri yüklenemedi. İnterneti kontrol et.<br><span style="color:var(--warn)">${escapeHtml(e.message||'')}</span></div>`;
+  }
+}
+
+function renderSetup(){
+  document.getElementById('groupLabel').textContent = '—';
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Hoş geldin</h2>
+      <p>FlowLedger, ortak kuyu/pompa kullanımını adil şekilde paylaştırır.<br>Başlamak için bir grup kodu belirle — bu kodu paylaştığın diğer kişilerle aynı gireceksin.</p>
+      <div class="field" style="text-align:left; max-width:320px; margin:0 auto 14px;">
+        <label for="setupCode">Grup Kodu</label>
+        <input type="text" id="setupCode" placeholder="örn. sungu-kuyu">
+      </div>
+      <button class="primary" style="max-width:320px;" onclick="setupGroup()">Devam Et</button>
+    </div>
+  `;
+}
+
+function setupGroup(){
+  const val = document.getElementById('setupCode').value.trim();
+  if(!val){ toast('Bir grup kodu gir'); return; }
+  kuyuKodu = val;
+  localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
+  loadAll();
+}
+
+// ---- Period computation ----
+// Period 0 = readings before first donem (or all, if no donem)
+// Period i = readings after donem[i-1] up to and including donem[i]
+function computePeriods(){
+  const donemler = cache.donemler;
+  const okumalar = cache.okumalar;
+  const periods = [];
+  let cursor = null; // last donem timestamp
+  donemler.forEach((d, idx) => {
+    const readings = okumalar.filter(o => {
+      const t = o.created_at;
+      return (cursor === null || t > cursor) && t <= d.created_at;
+    });
+    periods.push({ donem: d, readings, closed: true, index: idx+1 });
+    cursor = d.created_at;
+  });
+  // open (unbilled) period
+  const openReadings = okumalar.filter(o => cursor === null || o.created_at > cursor);
+  periods.push({ donem: null, readings: openReadings, closed: false, index: donemler.length+1 });
+  return periods;
+}
+
+function groupByPerson(readings){
+  const map = {};
+  readings.forEach(r => {
+    if(!map[r.kisi_adi]) map[r.kisi_adi] = { name: r.kisi_adi, total: 0, count: 0 };
+    map[r.kisi_adi].total += (r.kapatma_kw - r.acma_kw);
+    map[r.kisi_adi].count += 1;
+  });
+  return Object.values(map);
+}
+
+function calcPeriodResult(period){
+  const groups = groupByPerson(period.readings);
+  const kayitliToplam = groups.reduce((s,g)=>s+g.total,0);
+  let fark = 0;
+  const billKw = period.donem ? period.donem.fatura_toplam_kw : null;
+  if(billKw != null && kayitliToplam > 0) fark = billKw - kayitliToplam;
+
+  let rows = groups.map(g => ({ name: g.name, orijinal: g.total }));
+  const method = period.donem ? period.donem.dagitim_yontemi : 'oransal';
+  if(fark !== 0 && billKw != null){
+    if(method === 'esit'){
+      const pay = fark / (rows.length || 1);
+      rows = rows.map(r => ({...r, farkPayi: pay, yeniToplam: r.orijinal + pay}));
+    } else {
+      rows = rows.map(r => ({...r, farkPayi: kayitliToplam>0 ? fark*(r.orijinal/kayitliToplam) : 0}));
+      rows = rows.map(r => ({...r, yeniToplam: r.orijinal + r.farkPayi}));
+    }
+  } else {
+    rows = rows.map(r => ({...r, farkPayi:0, yeniToplam:r.orijinal}));
+  }
+  const nihaiToplam = rows.reduce((s,r)=>s+r.yeniToplam,0);
+  rows = rows.map(r => ({...r, oran: nihaiToplam>0 ? (r.yeniToplam/nihaiToplam)*100 : 0}));
+  if(period.donem){
+    rows = rows.map(r => ({...r, tutar: period.donem.toplam_tutar * (r.oran/100)}));
+  }
+  return { rows, kayitliToplam, fark, nihaiToplam, showFark: fark !== 0 && billKw != null };
+}
+
+function render(){
+  if(!kuyuKodu){ renderSetup(); return; }
+  if(currentTab === 'giris') renderGiris();
+  else if(currentTab === 'donem') renderDonem();
+  else renderGecmis();
+}
+
+function renderGiris(){
+  const openReadings = computePeriods().slice(-1)[0].readings;
+  const groups = groupByPerson(openReadings);
+  const html = `
+    <div class="card">
+      <h2>Okuma Ekle</h2>
+      <div class="field">
+        <label for="pname">İsim</label>
+        <input type="text" id="pname" placeholder="Adın">
+      </div>
+      <div class="row3">
+        <div class="field" style="margin-bottom:0">
+          <label for="pacma">Açma (kW)</label>
+          <input type="number" id="pacma" inputmode="decimal" placeholder="2302">
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="pkapatma">Kapatma (kW)</label>
+          <input type="number" id="pkapatma" inputmode="decimal" placeholder="2883">
+        </div>
+        <button class="action" onclick="addReading()">Ekle</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Bu Döneme Ait Okumalar (${openReadings.length})</h2>
+      ${groups.length===0 ? '<div class="empty">Henüz okuma yok.</div>' : groups.map(g => `
+        <div class="person-block">
+          <h3>${escapeHtml(g.name)} <span class="total">${g.total.toLocaleString('tr-TR')} kW</span></h3>
+          <div style="font-family:var(--mono); font-size:11.5px; color:#8a958f;">${g.count} kayıt</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('mainArea').innerHTML = html;
+}
+
+function renderDonem(){
+  const periods = computePeriods();
+  const openPeriod = periods[periods.length-1];
+  const result = calcPeriodResult(openPeriod);
+
+  let farkHtml = '';
+  if(result.showFark){
+    farkHtml = `
+      <div class="fark-alert">
+        Kayıtlı toplam: <b>${result.kayitliToplam.toFixed(1)} kW</b> — girilecek fatura kW'ı ile farklıysa aşağıda belirt.
+      </div>
+    `;
+  }
+
+  const html = `
+    <div class="card">
+      <h2>Bu Dönemi Faturala</h2>
+      ${openPeriod.readings.length===0 ? '<div class="empty">Bu dönemde henüz okuma girilmedi.</div>' : `
+        <p style="font-size:13px; color:#5a6b66; margin:0 0 12px;">Kayıtlı toplam kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b> (${openPeriod.readings.length} okuma)</p>
+        <div class="field">
+          <label for="billTotal">Toplam Fatura Tutarı (TL)</label>
+          <input type="number" id="billTotal" inputmode="decimal" placeholder="19060">
+        </div>
+        <div class="field">
+          <label for="billKw">Faturadaki Toplam kW (varsa, farkı otomatik hesaplar)</label>
+          <input type="number" id="billKw" inputmode="decimal" placeholder="3860">
+        </div>
+        <div class="field">
+          <label>Fark Olursa Dağıtım Yöntemi</label>
+          <div class="method-toggle">
+            <button id="mOransal" class="active" onclick="setBillMethod('oransal')">Oransal</button>
+            <button id="mEsit" onclick="setBillMethod('esit')">Eşit</button>
+          </div>
+        </div>
+        <button class="primary" onclick="submitBill()">Dönemi Kapat ve Hesapla</button>
+      `}
+    </div>
+    <div class="card">
+      <h2>Anlık Önizleme (henüz kaydedilmedi)</h2>
+      ${renderResultTable(result, false)}
+    </div>
+  `;
+  document.getElementById('mainArea').innerHTML = html;
+  window._billMethod = window._billMethod || 'oransal';
+}
+
+function setBillMethod(m){
+  window._billMethod = m;
+  document.getElementById('mOransal').classList.toggle('active', m==='oransal');
+  document.getElementById('mEsit').classList.toggle('active', m==='esit');
+}
+
+function renderResultTable(result, showBadgeClosed){
+  if(result.rows.length === 0) return '<div class="empty">Sonuç için okuma gerekli.</div>';
+  const showTutar = result.rows[0].tutar !== undefined;
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Kişi</th>
+          ${result.showFark ? '<th class="num">Fark</th>' : ''}
+          <th class="num">Toplam kW</th>
+          <th class="num">Oran</th>
+          ${showTutar ? '<th class="num">Tutar</th>' : ''}
+        </tr>
+      </thead>
+      <tbody>
+        ${result.rows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.name)}</td>
+            ${result.showFark ? `<td class="num">${r.farkPayi>=0?'+':''}${r.farkPayi.toFixed(1)}</td>` : ''}
+            <td class="num">${r.yeniToplam.toFixed(1)}</td>
+            <td class="num">%${r.oran.toFixed(1)}</td>
+            ${showTutar ? `<td class="num"><b>${r.tutar.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})} TL</b></td>` : ''}
+          </tr>
+        `).join('')}
+        <tr class="total-row">
+          <td>TOPLAM</td>
+          ${result.showFark ? `<td class="num">${result.fark>=0?'+':''}${result.fark.toFixed(1)}</td>` : ''}
+          <td class="num">${result.nihaiToplam.toFixed(1)}</td>
+          <td class="num">%100</td>
+          ${showTutar ? `<td class="num">${result.rows.reduce((s,r)=>s+r.tutar,0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})} TL</td>` : ''}
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+function renderGecmis(){
+  const periods = computePeriods().filter(p => p.closed);
+  if(periods.length === 0){
+    document.getElementById('mainArea').innerHTML = '<div class="empty">Henüz kapatılmış dönem yok.</div>';
+    return;
+  }
+  const html = periods.reverse().map(p => {
+    const result = calcPeriodResult(p);
+    const date = new Date(p.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
+    return `
+      <div class="card period-card">
+        <div class="period-head">
+          <span>Dönem ${p.index} · ${date}</span>
+          <span class="badge">${p.donem.toplam_tutar.toLocaleString('tr-TR')} TL</span>
+        </div>
+        ${renderResultTable(result, true)}
+      </div>
+    `;
+  }).join('');
+  document.getElementById('mainArea').innerHTML = html;
+}
+
+async function addReading(){
+  const name = document.getElementById('pname').value.trim();
+  const acma = parseFloat(document.getElementById('pacma').value);
+  const kapatma = parseFloat(document.getElementById('pkapatma').value);
+  if(!name){ toast('İsim gir'); return; }
+  if(isNaN(acma) || isNaN(kapatma)){ toast('Açma/kapatma değerlerini gir'); return; }
+  if(kapatma < acma){ toast('Kapatma, açmadan küçük olamaz'); return; }
+  try{
+    const { error } = await sb.from('okumalar').insert({
+      kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: kapatma
+    });
+    if(error) throw error;
+    toast('Kayıt eklendi');
+    await loadAll();
+  }catch(e){
+    toast('Hata: ' + (e.message||'kaydedilemedi'));
+  }
+}
+
+async function submitBill(){
+  const total = parseFloat(document.getElementById('billTotal').value);
+  const kwRaw = document.getElementById('billKw').value;
+  if(isNaN(total) || total <= 0){ toast('Geçerli bir tutar gir'); return; }
+  const billKw = kwRaw === '' ? null : parseFloat(kwRaw);
+  if(!confirm(`${total.toLocaleString('tr-TR')} TL tutarında bu dönemi kapatmak istediğine emin misin? Bu işlem geri alınamaz.`)) return;
+  try{
+    const { error } = await sb.from('donemler').insert({
+      kuyu_kodu: kuyuKodu,
+      toplam_tutar: total,
+      fatura_toplam_kw: billKw,
+      dagitim_yontemi: window._billMethod || 'oransal'
+    });
+    if(error) throw error;
+    toast('Dönem kapatıldı');
+    switchTab('gecmis');
+    await loadAll();
+  }catch(e){
+    toast('Hata: ' + (e.message||'kaydedilemedi'));
+  }
+}
+
+// init
+loadAll();
+setInterval(loadAll, 15000);
+
+// register service worker for installability
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
