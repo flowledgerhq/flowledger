@@ -216,6 +216,13 @@ function formatDateTime(iso){
   return d.toLocaleDateString('tr-TR', {day:'2-digit', month:'short'}) + ' · ' +
          d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
 }
+function todayDateStr(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 // Groups people correctly even if the name was typed with different
 // capitalization or stray spaces across entries (e.g. "ahmet " vs "Ahmet").
 function nameKey(name){
@@ -349,13 +356,28 @@ function computePeriods(){
   const periods = [];
   let cursor = null;
   donemler.forEach((d, idx) => {
-    const readings = okumalar.filter(o => (cursor === null || o.created_at > cursor) && o.created_at <= d.created_at);
+    // Cut off by the bill's real-world date (fatura_tarihi), not by when it
+    // happened to be typed into the app (created_at). This matters when a
+    // bill is entered several days late — readings from irrigation that
+    // happened AFTER the real bill date but BEFORE it was entered must not
+    // be swept into this period.
+    const cutoff = billCutoffTimestamp(d);
+    const readings = okumalar.filter(o => (cursor === null || o.created_at > cursor) && o.created_at <= cutoff);
     periods.push({ donem: d, readings, closed: true, index: idx+1 });
-    cursor = d.created_at;
+    cursor = cutoff;
   });
   const openReadings = okumalar.filter(o => cursor === null || o.created_at > cursor);
   periods.push({ donem: null, readings: openReadings, closed: false, index: donemler.length+1 });
   return periods;
+}
+// Returns the ISO timestamp that should act as this bill's period boundary.
+// Prefers the user-entered fatura_tarihi (end of that calendar day) and
+// falls back to created_at for older bills entered before this field existed.
+function billCutoffTimestamp(d){
+  if(d.fatura_tarihi){
+    return new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
+  }
+  return d.created_at;
 }
 function groupByPerson(readings){
   const map = {};
@@ -512,6 +534,11 @@ function renderFatura(){
       <h2>Fatura Gir</h2>
       <p style="font-size:15px; color:#5a6b66; margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
       <div class="field">
+        <label for="billDate">Fatura Tarihi</label>
+        <input type="date" id="billDate" value="${todayDateStr()}">
+      </div>
+      <p style="font-size:13px; color:#8a958f; margin:-12px 0 18px;">Faturanın üzerindeki tarihi gir — geç giriyorsan bile gerçek tarihi seç, sistem sulamaları doğru döneme ayırır.</p>
+      <div class="field">
         <label for="billTotal">Fatura Tutarı (TL)</label>
         <input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060">
       </div>
@@ -536,18 +563,21 @@ function setBillMethod(m){
 }
 async function submitBill(){
   if(isSavingBill) return;
+  const billDate = document.getElementById('billDate').value;
   const total = parseFloat(document.getElementById('billTotal').value);
   const kwRaw = document.getElementById('billKw').value;
+  if(!billDate){ toast('Fatura tarihini seç'); return; }
   if(isNaN(total) || total <= 0){ toast('Fatura tutarını gir'); return; }
   const billKw = kwRaw === '' ? null : parseFloat(kwRaw);
-  if(!confirm(`${money(total)} tutarında bu dönem kapatılsın mı?\n\nBu işlem geri alınamaz.`)) return;
+  if(!confirm(`${money(total)} tutarında, ${billDate.split('-').reverse().join('.')} tarihli fatura kaydedilsin mi?\n\nBu işlem geri alınamaz.`)) return;
 
   isSavingBill = true;
   const btn = document.getElementById('saveBillBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('donemler').insert({
-      kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw, dagitim_yontemi: billMethod
+      kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw,
+      dagitim_yontemi: billMethod, fatura_tarihi: billDate
     });
     if(error) throw error;
     toast('✓ Dönem kapatıldı');
@@ -573,7 +603,7 @@ function renderGecmis(){
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
     ${periods.map(p => {
-      const date = new Date(p.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
+      const date = new Date(billCutoffTimestamp(p.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
       return `
         <div class="period-item" onclick="renderSonuc(${p.index-1})">
           <div class="pdate">${date}</div>
@@ -589,7 +619,7 @@ function renderSonuc(periodIndexZeroBased){
   const periods = computePeriods();
   const period = periods[periodIndexZeroBased];
   const result = calcPeriodResult(period);
-  const date = period.donem ? new Date(period.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'}) : null;
+  const date = period.donem ? new Date(billCutoffTimestamp(period.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'}) : null;
 
   let farkHtml = '';
   if(result.showFark){
