@@ -629,7 +629,24 @@ function getCoords(){
   if(cachedGeo){
     try{ return Promise.resolve(JSON.parse(cachedGeo)); }catch(e){}
   }
-  return promptForLocation();
+  // Behave like a normal weather app: try the device's own location first.
+  // Falls back to asking for a place name only if permission isn't
+  // available — e.g. the installed APK's TWA shell doesn't currently
+  // declare the Android location permission, so this silently fails there
+  // today. If that gets enabled later (PWABuilder → rebuild with location
+  // permission), this same code will just start working automatically.
+  return new Promise((resolve) => {
+    if(!navigator.geolocation){ resolve(promptForLocation()); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const coords = { lat: pos.coords.latitude.toFixed(3), lon: pos.coords.longitude.toFixed(3), name: '' };
+        localStorage.setItem('flowledger_geo', JSON.stringify(coords));
+        resolve(coords);
+      },
+      () => resolve(promptForLocation()),
+      { timeout: 8000 }
+    );
+  });
 }
 // Tapping the weather chip lets you re-pick the location later.
 function changeWeatherLocation(){
