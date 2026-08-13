@@ -273,9 +273,11 @@ async function loadAll(isBackgroundRefresh){
   if(!kuyuKodu){ renderSetup(); return; }
   if(!kisiAdi){ renderNameSetup(); return; }
   document.getElementById('groupLabel').textContent = kuyuKodu;
-  // While the user is filling out a form, don't touch the screen at all —
-  // just skip redrawing (data will still be fresh next time they navigate).
-  if(isBackgroundRefresh && (currentScreen === 'giris' || currentScreen === 'fatura')){
+  // On the "fatura" screen (closing a bill), a background refresh could
+  // change the totals mid-edit, so we still skip entirely there. "giris"
+  // is handled below instead: we DO fetch fresh data so everyone's entries
+  // show up live, we just avoid touching the form inputs when redrawing.
+  if(isBackgroundRefresh && currentScreen === 'fatura'){
     return;
   }
   try{
@@ -300,7 +302,8 @@ function redrawCurrentScreen(){
   if(currentScreen === 'home') renderHome();
   else if(currentScreen === 'gecmis') renderGecmis();
   else if(currentScreen && currentScreen.name === 'sonuc') renderSonuc(currentScreen.arg);
-  // 'giris' / 'fatura' are intentionally left alone (see loadAll)
+  else if(currentScreen === 'giris') renderOpenReadingsList(); // update list only, leave form inputs untouched
+  // 'fatura' is intentionally left alone (see loadAll)
 }
 
 function renderSetup(){
@@ -474,8 +477,6 @@ function renderHome(){
 
 function renderGiris(){
   currentScreen = 'giris';
-  const periods = computePeriods();
-  const openReadings = periods[periods.length-1].readings.slice().reverse();
 
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
@@ -496,18 +497,34 @@ function renderGiris(){
       <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
     </div>
     <div class="card">
-      <h2>Bu Döneme Ait Kayıtlar (${openReadings.length})</h2>
-      ${openReadings.length === 0 ? '<div class="empty">Henüz kayıt yok.</div>' : openReadings.map(r => `
-        <div class="entry-row">
-          <div>
-            <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
-            <div class="edate">${formatDateTime(r.created_at)} · ${r.acma_kw} → ${r.kapatma_kw}</div>
-          </div>
-          <div class="ediff">${(r.kapatma_kw - r.acma_kw).toFixed(1)} kW</div>
-        </div>
-      `).join('')}
+      <h2 id="openReadingsTitle">Bu Döneme Ait Kayıtlar</h2>
+      <div id="openReadingsList"></div>
     </div>
   `;
+  renderOpenReadingsList();
+}
+
+// Renders just the "Bu Döneme Ait Kayıtlar" list into its own container,
+// without touching the form fields above it. This lets background refresh
+// keep this list live (so everyone sees each other's entries as they're
+// added) without wiping out whatever the user is mid-typing into the
+// açma/kapatma inputs.
+function renderOpenReadingsList(){
+  const titleEl = document.getElementById('openReadingsTitle');
+  const listEl = document.getElementById('openReadingsList');
+  if(!titleEl || !listEl) return; // screen isn't showing right now
+  const periods = computePeriods();
+  const openReadings = periods[periods.length-1].readings.slice().reverse();
+  titleEl.textContent = `Bu Döneme Ait Kayıtlar (${openReadings.length})`;
+  listEl.innerHTML = openReadings.length === 0 ? '<div class="empty">Henüz kayıt yok.</div>' : openReadings.map(r => `
+    <div class="entry-row">
+      <div>
+        <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
+        <div class="edate">${formatDateTime(r.created_at)} · ${r.acma_kw} → ${r.kapatma_kw}</div>
+      </div>
+      <div class="ediff">${(r.kapatma_kw - r.acma_kw).toFixed(1)} kW</div>
+    </div>
+  `).join('');
 }
 
 async function addReading(){
