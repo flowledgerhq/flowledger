@@ -5,190 +5,169 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>FlowLedger — Ortak Kuyu Defteri</title>
 <meta name="theme-color" content="#16302c">
-<meta name="description" content="Ortak kuyu ve pompa sistemleri için adil elektrik paylaşım defteri.">
+<meta name="description" content="Ortak su kuyusu ve pompa sistemleri için adil elektrik paylaşım defteri.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root{
     --ink:#1c2b28;
-    --paper:#f2ede1;
+    --paper:#f5f2e9;
     --well:#254a44;
     --well-deep:#16302c;
     --copper:#b5652e;
     --copper-2:#8f4c1f;
     --warn:#a13d2b;
     --good:#3d7a5c;
-    --line: rgba(28,43,40,0.14);
-    --mono: 'Courier New', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+    --line: rgba(28,43,40,0.16);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
-    background: radial-gradient(1200px 600px at 50% -10%, rgba(37,74,68,0.08), transparent 60%), var(--paper);
+    background:var(--paper);
     color:var(--ink);
-    font-family:var(--serif);
+    font-family:-apple-system, Roboto, 'Segoe UI', system-ui, sans-serif;
+    font-size:18px;
+    line-height:1.5;
     min-height:100vh;
-    padding-bottom:70px;
+    padding-bottom:24px;
   }
-  .wrap{max-width:640px;margin:0 auto;padding:0 16px;}
+  .wrap{max-width:600px;margin:0 auto;padding:0 18px;}
 
   header{
     background:var(--well-deep);
-    color:var(--paper);
-    padding:22px 16px 20px;
-    position:relative;
-    overflow:hidden;
+    color:#fff;
+    padding:20px 18px;
+    display:flex; align-items:center; gap:12px;
   }
-  header::after{
-    content:"";
-    position:absolute; inset:0;
-    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 26px);
-    pointer-events:none;
-  }
-  .brand{display:flex; align-items:center; gap:10px;}
-  .brand img{width:34px;height:34px;border-radius:8px;}
-  .brand-text h1{font-size:19px;margin:0; letter-spacing:-0.01em;}
-  .brand-text .eyebrow{font-family:var(--mono); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#9fc2b8; margin:0;}
-  .group-pill{
-    margin-top:14px;
-    display:flex; align-items:center; justify-content:space-between;
-    background:var(--well); border:1px solid rgba(255,255,255,0.12);
-    border-radius:8px; padding:9px 12px;
-    font-family:var(--mono); font-size:12.5px;
-  }
-  .group-pill button{
-    background:transparent; border:1px solid rgba(255,255,255,0.25); color:#e9c9a8;
-    font-family:var(--mono); font-size:10.5px; padding:5px 9px; border-radius:5px;
-    text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;
+  header img{width:44px;height:44px;border-radius:10px;}
+  header .htext{flex:1;}
+  header h1{font-size:22px; margin:0; font-weight:800;}
+  header .sub{font-size:14px; color:#b9d0c8; margin:2px 0 0;}
+  header .grp-btn{
+    background:rgba(255,255,255,0.14); border:none; color:#fff;
+    font-size:14px; padding:10px 12px; border-radius:8px; cursor:pointer;
   }
 
-  nav.tabs{
-    display:flex; gap:6px; margin-top:16px; padding-top:16px;
-  }
-  .wrap > nav.tabs{margin-top:16px;}
-  nav.tabs button{
-    flex:1;
-    font-family:var(--mono); font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em;
-    padding:11px 6px; border-radius:8px 8px 0 0;
-    border:1px solid var(--line); border-bottom:none;
-    background:#e9e1cf; color:#5a6b66; cursor:pointer;
-  }
-  nav.tabs button.active{background:#fbf8f0; color:var(--copper-2); font-weight:700;}
+  main{padding:20px 0 60px;}
 
-  main{background:#fbf8f0; border:1px solid var(--line); border-radius:0 0 10px 10px; padding:18px; min-height:300px;}
+  .big-btn{
+    display:block; width:100%;
+    background:#fff; border:2px solid var(--line);
+    border-radius:16px; padding:20px 18px; margin-bottom:14px;
+    text-align:left; cursor:pointer;
+    font-size:20px; font-weight:700; color:var(--ink);
+    display:flex; align-items:center; gap:16px;
+  }
+  .big-btn .icon{
+    width:52px; height:52px; border-radius:12px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:26px;
+  }
+  .big-btn .icon.copper{background:#f0dcc5; }
+  .big-btn .icon.well{background:#dbe8e3;}
+  .big-btn .sub{font-size:14px; font-weight:400; color:#5a6b66; margin-top:2px;}
+  .big-btn:active{transform:scale(0.98);}
+
+  .back-btn{
+    display:inline-flex; align-items:center; gap:6px;
+    background:none; border:none; color:var(--well);
+    font-size:17px; font-weight:700; padding:6px 0 18px; cursor:pointer;
+  }
 
   .card{
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:16px;
-    margin-bottom:14px;
+    background:#fff; border:2px solid var(--line); border-radius:16px;
+    padding:20px; margin-bottom:18px;
   }
-  .card h2{
-    font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--copper-2);
-    margin:0 0 12px; font-family:var(--mono); font-weight:700;
-  }
+  .card h2{font-size:20px; margin:0 0 16px; font-weight:800;}
 
-  label{display:block; font-size:12px; color:#5a6b66; margin-bottom:5px; font-family:var(--mono);}
-  input[type=text], input[type=number], select{
-    width:100%; font-family:var(--mono); font-size:16px; padding:11px 12px;
-    border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink);
+  label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well-deep);}
+  input[type=text], input[type=number]{
+    width:100%; font-size:22px; padding:16px 14px;
+    border:2px solid var(--line); border-radius:12px; background:#fff; color:var(--ink);
     -webkit-appearance:none;
   }
-  input:focus, select:focus{outline:2px solid var(--well); outline-offset:1px;}
-  .field{margin-bottom:12px;}
-  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-  .row3{display:grid; grid-template-columns:1fr 1fr auto; gap:10px; align-items:end;}
+  input:focus{outline:3px solid var(--well); outline-offset:1px;}
+  .field{margin-bottom:18px;}
 
-  button.primary, button.action{
-    font-family:var(--mono); font-size:13px; font-weight:700; letter-spacing:0.04em;
-    text-transform:uppercase; border:none; border-radius:7px; padding:12px 16px; cursor:pointer;
+  button.action{
+    width:100%; font-size:20px; font-weight:800;
+    border:none; border-radius:14px; padding:18px 16px; cursor:pointer;
   }
-  button.primary{background:var(--well); color:#fff; width:100%;}
-  button.action{background:var(--copper); color:#fff;}
+  button.action.primary{background:var(--well); color:#fff;}
+  button.action.copper{background:var(--copper); color:#fff;}
+  button.action.ghost{background:#eee6d6; color:var(--ink);}
   button:active{transform:scale(0.98);}
   button:disabled{opacity:0.5;}
 
-  .entry{
-    display:flex; justify-content:space-between; align-items:center;
-    padding:9px 0; border-bottom:1px dashed var(--line); font-family:var(--mono); font-size:13px;
+  .choice-row{display:flex; gap:12px; margin-bottom:18px;}
+  .choice-btn{
+    flex:1; padding:16px 10px; border-radius:12px; border:2px solid var(--line);
+    background:#fff; font-size:16px; font-weight:700; text-align:center; cursor:pointer;
   }
-  .entry:last-child{border-bottom:none;}
-  .entry .diff{font-weight:700; color:var(--well);}
+  .choice-btn.active{background:var(--well); border-color:var(--well); color:#fff;}
+  .choice-help{font-size:14px; color:#5a6b66; margin:-10px 0 18px;}
 
-  .person-block{border-left:3px solid var(--copper); padding-left:12px; margin-bottom:14px;}
-  .person-block h3{font-family:var(--serif); font-size:15.5px; margin:0 0 2px; display:flex; justify-content:space-between; align-items:baseline;}
-  .person-block .total{font-family:var(--mono); font-size:13px; color:var(--copper-2); font-weight:700;}
-
-  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px;}
-  th,td{text-align:left; padding:8px 5px; border-bottom:1px solid var(--line);}
-  th{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#5a6b66; font-weight:700;}
-  td.num, th.num{text-align:right;}
-  tr.total-row td{font-weight:700; border-top:2px solid var(--ink); border-bottom:none;}
-
-  .fark-alert{background:#f6e8d8; border:1px solid rgba(181,101,46,0.35); border-radius:8px; padding:12px; font-size:13px; margin-bottom:12px;}
-  .fark-alert b{color:var(--warn);}
-  .method-toggle{display:flex; gap:8px; margin-top:10px;}
-  .method-toggle button{
-    flex:1; background:#fff; border:1px solid var(--line); color:var(--ink);
-    font-weight:400; text-transform:none; font-size:12px; padding:9px; font-family:var(--mono); border-radius:6px; cursor:pointer;
+  .person-card{
+    background:#fbf8f0; border:2px solid var(--line); border-radius:14px;
+    padding:16px 18px; margin-bottom:12px;
   }
-  .method-toggle button.active{background:var(--well); color:#fff; border-color:var(--well); font-weight:700;}
-
-  .period-card{margin-bottom:16px;}
-  .period-head{
-    display:flex; justify-content:space-between; align-items:baseline;
-    font-family:var(--mono); font-size:12px; color:#5a6b66; margin-bottom:10px;
+  .person-card .pname{font-size:19px; font-weight:800; margin:0 0 4px;}
+  .person-card .pkw{font-size:15px; color:#5a6b66;}
+  .person-card .ptutar{
+    font-size:30px; font-weight:900; color:var(--copper-2); margin-top:8px;
   }
-  .period-head .badge{
-    background:var(--good); color:#fff; padding:2px 8px; border-radius:20px; font-size:10px; text-transform:uppercase; letter-spacing:0.05em;
-  }
-  .period-head .badge.open{background:var(--copper);}
+  .person-card .ptutar .lbl{font-size:14px; font-weight:600; color:#5a6b66; display:block; margin-bottom:2px;}
 
-  .empty{text-align:center; padding:22px 10px; color:#8a958f; font-size:13px; font-family:var(--mono);}
+  .period-item{
+    background:#fff; border:2px solid var(--line); border-radius:14px;
+    padding:16px 18px; margin-bottom:12px; cursor:pointer;
+  }
+  .period-item .pdate{font-size:15px; color:#5a6b66; margin-bottom:4px;}
+  .period-item .ptotal{font-size:22px; font-weight:800; color:var(--well-deep);}
+
+  .empty{
+    text-align:center; padding:40px 16px; color:#7a877f; font-size:17px;
+  }
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    background:var(--well-deep); color:#fff; padding:11px 18px; border-radius:8px;
-    font-family:var(--mono); font-size:12.5px; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.25s;
+    background:var(--well-deep); color:#fff; padding:14px 22px; border-radius:12px;
+    font-size:16px; font-weight:700; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.25s;
+    max-width:90vw; text-align:center;
   }
   .toast.show{opacity:1;}
-  .footnote{font-size:11px; color:#8a958f; text-align:center; margin-top:16px; font-family:var(--mono);}
 
-  .setup-screen{padding:40px 16px; text-align:center;}
-  .setup-screen h2{font-family:var(--serif); font-size:22px; margin-bottom:8px;}
-  .setup-screen p{color:#5a6b66; font-size:14px; line-height:1.6; margin-bottom:20px;}
+  .setup-screen{padding:50px 18px; text-align:center;}
+  .setup-screen h2{font-size:26px; margin-bottom:10px;}
+  .setup-screen p{color:#5a6b66; font-size:17px; line-height:1.6; margin-bottom:24px;}
+
+  .alert-box{
+    background:#f6e8d8; border:2px solid #dcb98a; border-radius:12px;
+    padding:14px 16px; font-size:15px; margin-bottom:16px; color:#6b4423;
+  }
+
+  .grand-total{
+    background:var(--well-deep); color:#fff; border-radius:14px;
+    padding:18px; text-align:center; margin-top:6px;
+  }
+  .grand-total .lbl{font-size:14px; color:#b9d0c8; margin-bottom:4px;}
+  .grand-total .amt{font-size:26px; font-weight:900;}
 </style>
 </head>
 <body>
 
 <div class="wrap">
   <header>
-    <div class="brand">
-      <img src="icon-192.png" alt="FlowLedger">
-      <div class="brand-text">
-        <p class="eyebrow">Ortak Kuyu Defteri</p>
-        <h1>FlowLedger</h1>
-      </div>
+    <img src="icon-192.png" alt="FlowLedger">
+    <div class="htext">
+      <h1>FlowLedger</h1>
+      <p class="sub">Grup: <b id="groupLabel">—</b></p>
     </div>
-    <div class="group-pill">
-      <span>Grup: <b id="groupLabel">—</b></span>
-      <button onclick="changeGroup()">Değiştir</button>
-    </div>
+    <button class="grp-btn" onclick="changeGroup()">Değiştir</button>
   </header>
-
-  <nav class="tabs">
-    <button id="tabBtn-giris" class="active" onclick="switchTab('giris')">Giriş</button>
-    <button id="tabBtn-donem" onclick="switchTab('donem')">Bu Dönem</button>
-    <button id="tabBtn-gecmis" onclick="switchTab('gecmis')">Geçmiş</button>
-  </nav>
 
   <main id="mainArea">
     <div class="empty">Yükleniyor…</div>
   </main>
-
-  <p class="footnote">FlowLedger · kayıtlar değiştirilemez, her giriş kalıcıdır</p>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -201,18 +180,20 @@ const SUPABASE_KEY = "sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
-let currentTab = 'giris';
 let cache = { okumalar: [], donemler: [] };
+let billMethod = 'oransal';
 
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2400);
+  setTimeout(()=>t.classList.remove('show'), 2600);
 }
-
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function money(n){
+  return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' TL';
 }
 
 function changeGroup(){
@@ -223,14 +204,6 @@ function changeGroup(){
     document.getElementById('groupLabel').textContent = kuyuKodu;
     loadAll();
   }
-}
-
-function switchTab(tab){
-  currentTab = tab;
-  ['giris','donem','gecmis'].forEach(t=>{
-    document.getElementById('tabBtn-'+t).classList.toggle('active', t===tab);
-  });
-  render();
 }
 
 async function loadAll(){
@@ -245,10 +218,9 @@ async function loadAll(){
     if(donemlerRes.error) throw donemlerRes.error;
     cache.okumalar = okumalarRes.data || [];
     cache.donemler = donemlerRes.data || [];
-    render();
+    renderHome();
   }catch(e){
-    console.error(e);
-    document.getElementById('mainArea').innerHTML = `<div class="empty">Veri yüklenemedi. İnterneti kontrol et.<br><span style="color:var(--warn)">${escapeHtml(e.message||'')}</span></div>`;
+    document.getElementById('mainArea').innerHTML = `<div class="empty">Veriler yüklenemedi.<br>İnterneti kontrol et.</div>`;
   }
 }
 
@@ -257,16 +229,15 @@ function renderSetup(){
   document.getElementById('mainArea').innerHTML = `
     <div class="setup-screen">
       <h2>Hoş geldin</h2>
-      <p>FlowLedger, ortak kuyu/pompa kullanımını adil şekilde paylaştırır.<br>Başlamak için bir grup kodu belirle — bu kodu paylaştığın diğer kişilerle aynı gireceksin.</p>
-      <div class="field" style="text-align:left; max-width:320px; margin:0 auto 14px;">
+      <p>Ortak kuyu kullanımını kolayca paylaştırmak için önce bir grup kodu belirle.<br>Bu kodu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
+      <div class="field" style="text-align:left;">
         <label for="setupCode">Grup Kodu</label>
         <input type="text" id="setupCode" placeholder="örn. sungu-kuyu">
       </div>
-      <button class="primary" style="max-width:320px;" onclick="setupGroup()">Devam Et</button>
+      <button class="action primary" onclick="setupGroup()">Devam Et</button>
     </div>
   `;
 }
-
 function setupGroup(){
   const val = document.getElementById('setupCode').value.trim();
   if(!val){ toast('Bir grup kodu gir'); return; }
@@ -276,27 +247,20 @@ function setupGroup(){
 }
 
 // ---- Period computation ----
-// Period 0 = readings before first donem (or all, if no donem)
-// Period i = readings after donem[i-1] up to and including donem[i]
 function computePeriods(){
   const donemler = cache.donemler;
   const okumalar = cache.okumalar;
   const periods = [];
-  let cursor = null; // last donem timestamp
+  let cursor = null;
   donemler.forEach((d, idx) => {
-    const readings = okumalar.filter(o => {
-      const t = o.created_at;
-      return (cursor === null || t > cursor) && t <= d.created_at;
-    });
+    const readings = okumalar.filter(o => (cursor === null || o.created_at > cursor) && o.created_at <= d.created_at);
     periods.push({ donem: d, readings, closed: true, index: idx+1 });
     cursor = d.created_at;
   });
-  // open (unbilled) period
   const openReadings = okumalar.filter(o => cursor === null || o.created_at > cursor);
   periods.push({ donem: null, readings: openReadings, closed: false, index: donemler.length+1 });
   return periods;
 }
-
 function groupByPerson(readings){
   const map = {};
   readings.forEach(r => {
@@ -306,7 +270,6 @@ function groupByPerson(readings){
   });
   return Object.values(map);
 }
-
 function calcPeriodResult(period){
   const groups = groupByPerson(period.readings);
   const kayitliToplam = groups.reduce((s,g)=>s+g.total,0);
@@ -335,204 +298,204 @@ function calcPeriodResult(period){
   return { rows, kayitliToplam, fark, nihaiToplam, showFark: fark !== 0 && billKw != null };
 }
 
-function render(){
-  if(!kuyuKodu){ renderSetup(); return; }
-  if(currentTab === 'giris') renderGiris();
-  else if(currentTab === 'donem') renderDonem();
-  else renderGecmis();
+// ---- Screens ----
+function renderHome(){
+  const periods = computePeriods();
+  const openPeriod = periods[periods.length-1];
+  const hasHistory = periods.length > 1;
+
+  document.getElementById('mainArea').innerHTML = `
+    <button class="big-btn" onclick="renderGiris()">
+      <div class="icon copper">✏️</div>
+      <div>Okuma Ekle
+        <div class="sub">Pompayı açtığında ve kapattığında değerleri gir</div>
+      </div>
+    </button>
+    <button class="big-btn" onclick="renderFatura()">
+      <div class="icon well">🧾</div>
+      <div>Fatura Gir
+        <div class="sub">${openPeriod.readings.length} okuma bekliyor · dönemi kapat</div>
+      </div>
+    </button>
+    <button class="big-btn" onclick="renderGecmis()">
+      <div class="icon well">📋</div>
+      <div>Geçmiş Faturalar
+        <div class="sub">${hasHistory ? (periods.length-1) + ' kapanmış dönem' : 'Henüz kapanmış dönem yok'}</div>
+      </div>
+    </button>
+  `;
 }
 
 function renderGiris(){
-  const openReadings = computePeriods().slice(-1)[0].readings;
-  const groups = groupByPerson(openReadings);
-  const html = `
+  document.getElementById('mainArea').innerHTML = `
+    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
     <div class="card">
       <h2>Okuma Ekle</h2>
       <div class="field">
-        <label for="pname">İsim</label>
-        <input type="text" id="pname" placeholder="Adın">
+        <label for="pname">Adın</label>
+        <input type="text" id="pname" placeholder="örn. Ahmet">
       </div>
-      <div class="row3">
-        <div class="field" style="margin-bottom:0">
-          <label for="pacma">Açma (kW)</label>
-          <input type="number" id="pacma" inputmode="decimal" placeholder="2302">
-        </div>
-        <div class="field" style="margin-bottom:0">
-          <label for="pkapatma">Kapatma (kW)</label>
-          <input type="number" id="pkapatma" inputmode="decimal" placeholder="2883">
-        </div>
-        <button class="action" onclick="addReading()">Ekle</button>
+      <div class="field">
+        <label for="pacma">Açma Değeri (kW)</label>
+        <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302">
       </div>
-    </div>
-    <div class="card">
-      <h2>Bu Döneme Ait Okumalar (${openReadings.length})</h2>
-      ${groups.length===0 ? '<div class="empty">Henüz okuma yok.</div>' : groups.map(g => `
-        <div class="person-block">
-          <h3>${escapeHtml(g.name)} <span class="total">${g.total.toLocaleString('tr-TR')} kW</span></h3>
-          <div style="font-family:var(--mono); font-size:11.5px; color:#8a958f;">${g.count} kayıt</div>
-        </div>
-      `).join('')}
+      <div class="field">
+        <label for="pkapatma">Kapatma Değeri (kW)</label>
+        <input type="number" id="pkapatma" inputmode="decimal" placeholder="örn. 2883">
+      </div>
+      <button class="action copper" onclick="addReading()">Kaydet</button>
     </div>
   `;
-  document.getElementById('mainArea').innerHTML = html;
-}
-
-function renderDonem(){
-  const periods = computePeriods();
-  const openPeriod = periods[periods.length-1];
-  const result = calcPeriodResult(openPeriod);
-
-  let farkHtml = '';
-  if(result.showFark){
-    farkHtml = `
-      <div class="fark-alert">
-        Kayıtlı toplam: <b>${result.kayitliToplam.toFixed(1)} kW</b> — girilecek fatura kW'ı ile farklıysa aşağıda belirt.
-      </div>
-    `;
-  }
-
-  const html = `
-    <div class="card">
-      <h2>Bu Dönemi Faturala</h2>
-      ${openPeriod.readings.length===0 ? '<div class="empty">Bu dönemde henüz okuma girilmedi.</div>' : `
-        <p style="font-size:13px; color:#5a6b66; margin:0 0 12px;">Kayıtlı toplam kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b> (${openPeriod.readings.length} okuma)</p>
-        <div class="field">
-          <label for="billTotal">Toplam Fatura Tutarı (TL)</label>
-          <input type="number" id="billTotal" inputmode="decimal" placeholder="19060">
-        </div>
-        <div class="field">
-          <label for="billKw">Faturadaki Toplam kW (varsa, farkı otomatik hesaplar)</label>
-          <input type="number" id="billKw" inputmode="decimal" placeholder="3860">
-        </div>
-        <div class="field">
-          <label>Fark Olursa Dağıtım Yöntemi</label>
-          <div class="method-toggle">
-            <button id="mOransal" class="active" onclick="setBillMethod('oransal')">Oransal</button>
-            <button id="mEsit" onclick="setBillMethod('esit')">Eşit</button>
-          </div>
-        </div>
-        <button class="primary" onclick="submitBill()">Dönemi Kapat ve Hesapla</button>
-      `}
-    </div>
-    <div class="card">
-      <h2>Anlık Önizleme (henüz kaydedilmedi)</h2>
-      ${renderResultTable(result, false)}
-    </div>
-  `;
-  document.getElementById('mainArea').innerHTML = html;
-  window._billMethod = window._billMethod || 'oransal';
-}
-
-function setBillMethod(m){
-  window._billMethod = m;
-  document.getElementById('mOransal').classList.toggle('active', m==='oransal');
-  document.getElementById('mEsit').classList.toggle('active', m==='esit');
-}
-
-function renderResultTable(result, showBadgeClosed){
-  if(result.rows.length === 0) return '<div class="empty">Sonuç için okuma gerekli.</div>';
-  const showTutar = result.rows[0].tutar !== undefined;
-  return `
-    <table>
-      <thead>
-        <tr>
-          <th>Kişi</th>
-          ${result.showFark ? '<th class="num">Fark</th>' : ''}
-          <th class="num">Toplam kW</th>
-          <th class="num">Oran</th>
-          ${showTutar ? '<th class="num">Tutar</th>' : ''}
-        </tr>
-      </thead>
-      <tbody>
-        ${result.rows.map(r => `
-          <tr>
-            <td>${escapeHtml(r.name)}</td>
-            ${result.showFark ? `<td class="num">${r.farkPayi>=0?'+':''}${r.farkPayi.toFixed(1)}</td>` : ''}
-            <td class="num">${r.yeniToplam.toFixed(1)}</td>
-            <td class="num">%${r.oran.toFixed(1)}</td>
-            ${showTutar ? `<td class="num"><b>${r.tutar.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})} TL</b></td>` : ''}
-          </tr>
-        `).join('')}
-        <tr class="total-row">
-          <td>TOPLAM</td>
-          ${result.showFark ? `<td class="num">${result.fark>=0?'+':''}${result.fark.toFixed(1)}</td>` : ''}
-          <td class="num">${result.nihaiToplam.toFixed(1)}</td>
-          <td class="num">%100</td>
-          ${showTutar ? `<td class="num">${result.rows.reduce((s,r)=>s+r.tutar,0).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})} TL</td>` : ''}
-        </tr>
-      </tbody>
-    </table>
-  `;
-}
-
-function renderGecmis(){
-  const periods = computePeriods().filter(p => p.closed);
-  if(periods.length === 0){
-    document.getElementById('mainArea').innerHTML = '<div class="empty">Henüz kapatılmış dönem yok.</div>';
-    return;
-  }
-  const html = periods.reverse().map(p => {
-    const result = calcPeriodResult(p);
-    const date = new Date(p.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
-    return `
-      <div class="card period-card">
-        <div class="period-head">
-          <span>Dönem ${p.index} · ${date}</span>
-          <span class="badge">${p.donem.toplam_tutar.toLocaleString('tr-TR')} TL</span>
-        </div>
-        ${renderResultTable(result, true)}
-      </div>
-    `;
-  }).join('');
-  document.getElementById('mainArea').innerHTML = html;
 }
 
 async function addReading(){
   const name = document.getElementById('pname').value.trim();
   const acma = parseFloat(document.getElementById('pacma').value);
   const kapatma = parseFloat(document.getElementById('pkapatma').value);
-  if(!name){ toast('İsim gir'); return; }
-  if(isNaN(acma) || isNaN(kapatma)){ toast('Açma/kapatma değerlerini gir'); return; }
-  if(kapatma < acma){ toast('Kapatma, açmadan küçük olamaz'); return; }
+  if(!name){ toast('Adını gir'); return; }
+  if(isNaN(acma) || isNaN(kapatma)){ toast('Açma ve kapatma değerlerini gir'); return; }
+  if(kapatma < acma){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
   try{
     const { error } = await sb.from('okumalar').insert({
       kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: kapatma
     });
     if(error) throw error;
-    toast('Kayıt eklendi');
+    toast('✓ Kaydedildi');
     await loadAll();
+    renderHome();
   }catch(e){
-    toast('Hata: ' + (e.message||'kaydedilemedi'));
+    toast('Hata oldu, tekrar dene');
   }
 }
 
+function renderFatura(){
+  const periods = computePeriods();
+  const openPeriod = periods[periods.length-1];
+  const result = calcPeriodResult(openPeriod);
+
+  if(openPeriod.readings.length === 0){
+    document.getElementById('mainArea').innerHTML = `
+      <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+      <div class="card">
+        <h2>Fatura Gir</h2>
+        <div class="empty">Bu dönemde henüz hiç okuma girilmedi.<br>Önce "Okuma Ekle" ile en az bir kayıt gir.</div>
+      </div>
+    `;
+    return;
+  }
+
+  billMethod = 'oransal';
+  document.getElementById('mainArea').innerHTML = `
+    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+    <div class="card">
+      <h2>Fatura Gir</h2>
+      <p style="font-size:15px; color:#5a6b66; margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
+      <div class="field">
+        <label for="billTotal">Fatura Tutarı (TL)</label>
+        <input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060">
+      </div>
+      <div class="field">
+        <label for="billKw">Faturadaki Toplam kW (biliyorsan)</label>
+        <input type="number" id="billKw" inputmode="decimal" placeholder="boş bırakabilirsin">
+      </div>
+      <label>Fark Çıkarsa Nasıl Paylaştırılsın?</label>
+      <div class="choice-row">
+        <div class="choice-btn active" id="mOransal" onclick="setBillMethod('oransal')">Kullanıma Göre</div>
+        <div class="choice-btn" id="mEsit" onclick="setBillMethod('esit')">Eşit Paylaş</div>
+      </div>
+      <div class="choice-help">"Kullanıma göre": çok kullanan farktan da çok pay alır. "Eşit paylaş": fark herkese eşit bölünür.</div>
+      <button class="action primary" onclick="submitBill()">Dönemi Kapat</button>
+    </div>
+  `;
+}
+function setBillMethod(m){
+  billMethod = m;
+  document.getElementById('mOransal').classList.toggle('active', m==='oransal');
+  document.getElementById('mEsit').classList.toggle('active', m==='esit');
+}
 async function submitBill(){
   const total = parseFloat(document.getElementById('billTotal').value);
   const kwRaw = document.getElementById('billKw').value;
-  if(isNaN(total) || total <= 0){ toast('Geçerli bir tutar gir'); return; }
+  if(isNaN(total) || total <= 0){ toast('Fatura tutarını gir'); return; }
   const billKw = kwRaw === '' ? null : parseFloat(kwRaw);
-  if(!confirm(`${total.toLocaleString('tr-TR')} TL tutarında bu dönemi kapatmak istediğine emin misin? Bu işlem geri alınamaz.`)) return;
+  if(!confirm(`${money(total)} tutarında bu dönem kapatılsın mı?\n\nBu işlem geri alınamaz.`)) return;
   try{
     const { error } = await sb.from('donemler').insert({
-      kuyu_kodu: kuyuKodu,
-      toplam_tutar: total,
-      fatura_toplam_kw: billKw,
-      dagitim_yontemi: window._billMethod || 'oransal'
+      kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw, dagitim_yontemi: billMethod
     });
     if(error) throw error;
-    toast('Dönem kapatıldı');
-    switchTab('gecmis');
+    toast('✓ Dönem kapatıldı');
     await loadAll();
+    renderSonuc(computePeriods().filter(p=>p.closed).length - 1);
   }catch(e){
-    toast('Hata: ' + (e.message||'kaydedilemedi'));
+    toast('Hata oldu, tekrar dene');
   }
+}
+
+function renderGecmis(){
+  const periods = computePeriods().filter(p => p.closed).reverse();
+  if(periods.length === 0){
+    document.getElementById('mainArea').innerHTML = `
+      <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+      <div class="empty">Henüz kapanmış bir fatura dönemi yok.</div>
+    `;
+    return;
+  }
+  document.getElementById('mainArea').innerHTML = `
+    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+    ${periods.map(p => {
+      const date = new Date(p.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
+      return `
+        <div class="period-item" onclick="renderSonuc(${p.index-1})">
+          <div class="pdate">${date}</div>
+          <div class="ptotal">${money(p.donem.toplam_tutar)}</div>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function renderSonuc(periodIndexZeroBased){
+  const periods = computePeriods();
+  const period = periods[periodIndexZeroBased];
+  const result = calcPeriodResult(period);
+  const date = period.donem ? new Date(period.donem.created_at).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'}) : null;
+
+  let farkHtml = '';
+  if(result.showFark){
+    farkHtml = `<div class="alert-box">Kayıtlı toplam ${result.kayitliToplam.toFixed(1)} kW idi, faturada ${period.donem.fatura_toplam_kw} kW görünüyor. ${result.fark>0?'+':''}${result.fark.toFixed(1)} kW fark, seçilen yönteme göre paylaştırıldı.</div>`;
+  }
+
+  const grandTotal = result.rows.reduce((s,r)=>s+(r.tutar||0),0);
+
+  document.getElementById('mainArea').innerHTML = `
+    <button class="back-btn" onclick="renderGecmis()">‹ Geçmiş</button>
+    <div class="card">
+      <h2>${date ? date + ' Faturası' : 'Bu Dönem'}</h2>
+      ${farkHtml}
+      ${result.rows.length === 0 ? '<div class="empty">Bu dönemde kayıt yok.</div>' : result.rows.map(r => `
+        <div class="person-card">
+          <p class="pname">${escapeHtml(r.name)}</p>
+          <p class="pkw">${r.yeniToplam.toFixed(1)} kW kullandı · %${r.oran.toFixed(0)} pay</p>
+          ${r.tutar !== undefined ? `
+            <div class="ptutar"><span class="lbl">Ödeyecek</span>${money(r.tutar)}</div>
+          ` : ''}
+        </div>
+      `).join('')}
+      ${period.donem ? `
+        <div class="grand-total">
+          <div class="lbl">Toplam Fatura</div>
+          <div class="amt">${money(period.donem.toplam_tutar)}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 // init
 loadAll();
 setInterval(loadAll, 15000);
 
-// register service worker for installability
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('service-worker.js').catch(()=>{});
