@@ -43,10 +43,15 @@
   header{
     background:var(--well-deep);
     color:#fff;
-    padding:20px 18px 26px;
-    display:flex; align-items:center; gap:12px;
+    padding:calc(env(safe-area-inset-top) + 20px) 18px 26px;
+    display:block;
     position:relative;
     overflow:hidden;
+    width:100%;
+  }
+  header .header-inner{
+    max-width:600px; margin:0 auto;
+    display:flex; align-items:center; gap:12px;
   }
   /* Signature: a soft ripple of water beneath the header, tying the app's
      "shared well" subject into the one place we spend visual boldness. */
@@ -203,16 +208,18 @@
 </head>
 <body>
 
-<div class="wrap">
-  <header>
+<header>
+  <div class="header-inner">
     <img src="icon-192.png" alt="FlowLedger">
     <div class="htext">
       <h1>FlowLedger</h1>
       <p class="sub">Grup: <b id="groupLabel">—</b></p>
     </div>
     <button class="grp-btn" onclick="changeGroup()">Değiştir</button>
-  </header>
+  </div>
+</header>
 
+<div class="wrap">
   <main id="mainArea">
     <div class="empty">Yükleniyor…</div>
   </main>
