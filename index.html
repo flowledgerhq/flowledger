@@ -302,7 +302,7 @@ function redrawCurrentScreen(){
   if(currentScreen === 'home') renderHome();
   else if(currentScreen === 'gecmis') renderGecmis();
   else if(currentScreen && currentScreen.name === 'sonuc') renderSonuc(currentScreen.arg);
-  else if(currentScreen === 'giris') renderOpenReadingsList(); // update list only, leave form inputs untouched
+  else if(currentScreen === 'giris'){ renderOpenReadingsList(); renderPendingList(); } // update lists only, leave form inputs untouched
   // 'fatura' is intentionally left alone (see loadAll)
 }
 
@@ -370,9 +370,20 @@ function changePerson(){
 }
 
 // ---- Period computation ----
+// Returns the timestamp that should be used to place a reading into a
+// period. For a completed reading whose kapatma was filled in later (not
+// at the same time as açma), we use the completion moment rather than the
+// açma moment — the usage number wasn't actually known until then, so it
+// couldn't have been counted in a bill closed before that point.
+function readingEffectiveTimestamp(o){
+  return o.tamamlanma_tarihi || o.created_at;
+}
 function computePeriods(){
   const donemler = cache.donemler;
-  const okumalar = cache.okumalar;
+  // Pending readings (kapatma not filled in yet) have no usable kW figure
+  // and can't belong to any period — they're shown separately until
+  // completed, so they're excluded here entirely.
+  const okumalar = cache.okumalar.filter(o => o.kapatma_kw !== null && o.kapatma_kw !== undefined);
   const periods = [];
   let cursor = null;
   donemler.forEach((d, idx) => {
@@ -382,11 +393,11 @@ function computePeriods(){
     // happened AFTER the real bill date but BEFORE it was entered must not
     // be swept into this period.
     const cutoff = billCutoffTimestamp(d);
-    const readings = okumalar.filter(o => (cursor === null || o.created_at > cursor) && o.created_at <= cutoff);
+    const readings = okumalar.filter(o => (cursor === null || readingEffectiveTimestamp(o) > cursor) && readingEffectiveTimestamp(o) <= cutoff);
     periods.push({ donem: d, readings, closed: true, index: idx+1 });
     cursor = cutoff;
   });
-  const openReadings = okumalar.filter(o => cursor === null || o.created_at > cursor);
+  const openReadings = okumalar.filter(o => cursor === null || readingEffectiveTimestamp(o) > cursor);
   periods.push({ donem: null, readings: openReadings, closed: false, index: donemler.length+1 });
   return periods;
 }
@@ -491,10 +502,15 @@ function renderGiris(){
         <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302">
       </div>
       <div class="field">
-        <label for="pkapatma">Kapatma Değeri (kW)</label>
-        <input type="number" id="pkapatma" inputmode="decimal" placeholder="örn. 2883">
+        <label for="pkapatma">Kapatma Değeri (kW) <span style="font-weight:400; color:#8a958f;">— biliyorsan gir</span></label>
+        <input type="number" id="pkapatma" inputmode="decimal" placeholder="henüz kapatmadıysan boş bırak">
       </div>
       <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
+    </div>
+    <div class="card" id="pendingCard" style="display:none;">
+      <h2 id="pendingTitle">Bekleyen Girişler</h2>
+      <p style="font-size:13px; color:#8a958f; margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. Kapatma değeri girilince aşağıdaki listeye taşınır.</p>
+      <div id="pendingList"></div>
     </div>
     <div class="card">
       <h2 id="openReadingsTitle">Bu Döneme Ait Kayıtlar</h2>
@@ -502,6 +518,55 @@ function renderGiris(){
     </div>
   `;
   renderOpenReadingsList();
+  renderPendingList();
+}
+
+// Entries with kapatma_kw not yet filled in. Shown separately so an açma
+// value stays visibly "parked" under the person's name until someone
+// (same device or a different one) comes back and fills in the kapatma
+// value — at which point it's completed and moves into the regular list.
+function renderPendingList(){
+  const cardEl = document.getElementById('pendingCard');
+  const titleEl = document.getElementById('pendingTitle');
+  const listEl = document.getElementById('pendingList');
+  if(!cardEl || !titleEl || !listEl) return; // screen isn't showing right now
+  const pending = cache.okumalar
+    .filter(o => o.kuyu_kodu === kuyuKodu && (o.kapatma_kw === null || o.kapatma_kw === undefined))
+    .slice()
+    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  cardEl.style.display = pending.length === 0 ? 'none' : '';
+  titleEl.textContent = `Bekleyen Girişler (${pending.length})`;
+  listEl.innerHTML = pending.map(r => `
+    <div class="entry-row">
+      <div>
+        <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
+        <div class="edate">${formatDateTime(r.created_at)} · Açma: ${r.acma_kw} kW</div>
+      </div>
+      <button class="action copper" style="width:auto; padding:8px 16px; font-size:14px;" onclick="completeReading('${r.id}')">Kapat</button>
+    </div>
+  `).join('');
+}
+
+async function completeReading(id){
+  const row = cache.okumalar.find(o => o.id === id);
+  if(!row) return;
+  const val = prompt(`${displayName(row.kisi_adi)} için kapatma değerini gir (açma: ${row.acma_kw} kW):`);
+  if(val === null) return; // cancelled
+  const kapatma = parseFloat(val);
+  if(isNaN(kapatma)){ toast('Geçerli bir sayı gir'); return; }
+  if(kapatma < row.acma_kw){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
+  try{
+    const { error } = await sb.from('okumalar')
+      .update({ kapatma_kw: kapatma, tamamlanma_tarihi: new Date().toISOString() })
+      .eq('id', id);
+    if(error) throw error;
+    toast('✓ Tamamlandı');
+    await loadAll();
+    renderOpenReadingsList();
+    renderPendingList();
+  }catch(e){
+    toast('Hata oldu, tekrar dene');
+  }
 }
 
 // Renders just the "Bu Döneme Ait Kayıtlar" list into its own container,
@@ -531,9 +596,10 @@ async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
   const name = kisiAdi;
   const acma = parseFloat(document.getElementById('pacma').value);
-  const kapatma = parseFloat(document.getElementById('pkapatma').value);
-  if(isNaN(acma) || isNaN(kapatma)){ toast('Açma ve kapatma değerlerini gir'); return; }
-  if(kapatma < acma){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
+  const kapatmaRaw = document.getElementById('pkapatma').value;
+  const kapatma = kapatmaRaw === '' ? null : parseFloat(kapatmaRaw);
+  if(isNaN(acma)){ toast('Açma değerini gir'); return; }
+  if(kapatma !== null && (isNaN(kapatma) || kapatma < acma)){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
 
   isSavingReading = true;
   const btn = document.getElementById('saveReadingBtn');
@@ -543,7 +609,7 @@ async function addReading(){
       kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: kapatma
     });
     if(error) throw error;
-    toast('✓ Kaydedildi');
+    toast(kapatma === null ? '✓ Açma değeri kaydedildi (bekliyor)' : '✓ Kaydedildi');
     await loadAll();
     renderGiris();
   }catch(e){
