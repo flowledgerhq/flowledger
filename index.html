@@ -17,15 +17,42 @@
     --ink:#1c2b28;
     --paper:#f5f2e9;
     --paper-warm:#efe8d4;
+    --surface:#ffffff;
     --well:#254a44;
     --well-deep:#16302c;
     --copper:#b5652e;
     --copper-2:#8f4c1f;
     --warn:#a13d2b;
     --good:#3d7a5c;
+    --muted:#5a6b66;
+    --muted-soft:#82908a;
     --line: rgba(28,43,40,0.16);
     --shadow: 0 2px 10px rgba(22,48,44,0.07), 0 1px 2px rgba(22,48,44,0.06);
     --font-display: 'Roboto Slab', Georgia, 'Times New Roman', serif;
+  }
+  /* Dark mode: koyu slate palette. Header/toast/grand-total already sit on
+     a dark well-deep background in light mode too, so they stay as-is —
+     only the page surface, cards, and text need to flip. */
+  body.dark{
+    --ink:#e2e8f0;
+    --paper:#0f172a;
+    --paper-warm:#1e293b;
+    --surface:#1e293b;
+    --well:#5fb0a1;
+    --well-deep:#16302c;
+    --copper:#e08a4f;
+    --copper-2:#e0985f;
+    --muted:#94a3b8;
+    --muted-soft:#7d8aa0;
+    --line: rgba(226,232,240,0.14);
+    --shadow: 0 2px 10px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .alert-box{
+    background:#f6e8d8; border:2px solid #dcb98a; border-radius:12px;
+    padding:14px 16px; font-size:15px; margin-bottom:16px; color:#6b4423;
+  }
+  body.dark .alert-box{
+    background:#2b2412; border-color:#6b551f; color:#e3c583;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -37,6 +64,7 @@
     line-height:1.5;
     min-height:100vh;
     padding-bottom:24px;
+    transition: background-color 0.2s, color 0.2s;
   }
   .wrap{max-width:600px;margin:0 auto;padding:0 18px;}
 
@@ -53,6 +81,15 @@
     max-width:600px; margin:0 auto;
     display:flex; align-items:center; gap:12px;
   }
+  header .header-actions{
+    display:flex; align-items:center; gap:8px;
+    align-self:flex-end;
+  }
+  header .icon-btn{
+    background:rgba(255,255,255,0.14); border:none; color:#fff;
+    width:38px; height:38px; border-radius:8px; font-size:17px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
   /* Signature: a soft ripple of water beneath the header, tying the app's
      "shared well" subject into the one place we spend visual boldness. */
   header::after{
@@ -61,6 +98,9 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 Q 15 0 30 5 T 60 5 T 90 5 T 120 5 V10 H0 Z' fill='%23f5f2e9' fill-opacity='1'/%3E%3Cpath d='M0 7 Q 15 3 30 7 T 60 7 T 90 7 T 120 7 V10 H0 Z' fill='%23f5f2e9' fill-opacity='0.55'/%3E%3C/svg%3E");
     background-size: 120px 10px;
     background-repeat: repeat-x;
+  }
+  body.dark header::after{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 Q 15 0 30 5 T 60 5 T 90 5 T 120 5 V10 H0 Z' fill='%230f172a' fill-opacity='1'/%3E%3Cpath d='M0 7 Q 15 3 30 7 T 60 7 T 90 7 T 120 7 V10 H0 Z' fill='%230f172a' fill-opacity='0.55'/%3E%3C/svg%3E");
   }
   header img{width:44px;height:44px;border-radius:10px;}
   header .htext{flex:1;}
@@ -75,7 +115,7 @@
 
   .big-btn{
     display:block; width:100%;
-    background:#fff; border:2px solid var(--line);
+    background:var(--surface); border:2px solid var(--line);
     border-radius:16px; padding:20px 18px; margin-bottom:14px;
     text-align:left; cursor:pointer;
     font-size:20px; font-weight:700; color:var(--ink);
@@ -88,7 +128,7 @@
   }
   .big-btn .icon.copper{background:#f0dcc5; }
   .big-btn .icon.well{background:#dbe8e3;}
-  .big-btn .sub{font-size:14px; font-weight:400; color:#5a6b66; margin-top:2px;}
+  .big-btn .sub{font-size:14px; font-weight:400; color:var(--muted); margin-top:2px;}
   .big-btn:active{transform:scale(0.98);}
 
   .back-btn{
@@ -98,7 +138,7 @@
   }
 
   .card{
-    background:#fff; border:2px solid var(--line); border-radius:16px;
+    background:var(--surface); border:2px solid var(--line); border-radius:16px;
     padding:20px; margin-bottom:18px;
     box-shadow:var(--shadow);
   }
@@ -107,7 +147,7 @@
   label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well-deep);}
   input[type=text], input[type=number]{
     width:100%; font-size:22px; padding:16px 14px;
-    border:2px solid var(--line); border-radius:12px; background:#fff; color:var(--ink);
+    border:2px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink);
     -webkit-appearance:none;
     font-variant-numeric: tabular-nums;
   }
@@ -127,25 +167,25 @@
   .choice-row{display:flex; gap:12px; margin-bottom:18px;}
   .choice-btn{
     flex:1; padding:16px 10px; border-radius:12px; border:2px solid var(--line);
-    background:#fff; font-size:16px; font-weight:700; text-align:center; cursor:pointer;
+    background:var(--surface); font-size:16px; font-weight:700; text-align:center; cursor:pointer;
   }
   .choice-btn.active{background:var(--well); border-color:var(--well); color:#fff;}
-  .choice-help{font-size:14px; color:#5a6b66; margin:-10px 0 18px;}
+  .choice-help{font-size:14px; color:var(--muted); margin:-10px 0 18px;}
 
   .person-card{
     background:var(--paper-warm); border:2px solid var(--line); border-radius:14px;
     padding:16px 18px; margin-bottom:12px;
   }
   .person-card .pname{font-family:var(--font-display); font-size:19px; font-weight:700; margin:0 0 4px;}
-  .person-card .pkw{font-size:15px; color:#5a6b66; font-variant-numeric: tabular-nums;}
+  .person-card .pkw{font-size:15px; color:var(--muted); font-variant-numeric: tabular-nums;}
   .person-card .ptutar{
     font-family:var(--font-display); font-size:31px; font-weight:800; color:var(--copper-2); margin-top:8px;
     font-variant-numeric: tabular-nums;
   }
-  .person-card .ptutar .lbl{font-family:-apple-system, Roboto, 'Segoe UI', system-ui, sans-serif; font-size:14px; font-weight:600; color:#5a6b66; display:block; margin-bottom:2px;}
+  .person-card .ptutar .lbl{font-family:-apple-system, Roboto, 'Segoe UI', system-ui, sans-serif; font-size:14px; font-weight:600; color:var(--muted); display:block; margin-bottom:2px;}
 
   .period-item{
-    background:#fff; border:2px solid var(--line); border-radius:14px;
+    background:var(--surface); border:2px solid var(--line); border-radius:14px;
     padding:14px 18px; margin-bottom:12px; cursor:pointer;
     display:flex; align-items:center; gap:14px;
     box-shadow:var(--shadow);
@@ -157,11 +197,11 @@
     display:flex; align-items:center; justify-content:center;
   }
   .period-item .pbody{flex:1; min-width:0;}
-  .period-item .pdate{font-size:15px; color:#5a6b66; margin-bottom:2px;}
+  .period-item .pdate{font-size:15px; color:var(--muted); margin-bottom:2px;}
   .period-item .ptotal{font-family:var(--font-display); font-size:21px; font-weight:700; color:var(--well-deep); font-variant-numeric: tabular-nums;}
 
   .empty{
-    text-align:center; padding:44px 16px; color:#7a877f; font-size:17px;
+    text-align:center; padding:44px 16px; color:var(--muted-soft); font-size:17px;
   }
   .empty::before{
     content:"";
@@ -181,12 +221,7 @@
 
   .setup-screen{padding:50px 18px; text-align:center;}
   .setup-screen h2{font-family:var(--font-display); font-size:27px; margin-bottom:10px; font-weight:700;}
-  .setup-screen p{color:#5a6b66; font-size:17px; line-height:1.6; margin-bottom:24px;}
-
-  .alert-box{
-    background:#f6e8d8; border:2px solid #dcb98a; border-radius:12px;
-    padding:14px 16px; font-size:15px; margin-bottom:16px; color:#6b4423;
-  }
+  .setup-screen p{color:var(--muted); font-size:17px; line-height:1.6; margin-bottom:24px;}
 
   .entry-row{
     display:flex; justify-content:space-between; align-items:center;
@@ -195,7 +230,7 @@
   }
   .entry-row:last-child{border-bottom:none;}
   .entry-row .ename{font-weight:800; font-size:16px;}
-  .entry-row .edate{color:#7a877f; font-size:13px; margin-top:2px; font-variant-numeric: tabular-nums;}
+  .entry-row .edate{color:var(--muted-soft); font-size:13px; margin-top:2px; font-variant-numeric: tabular-nums;}
   .entry-row .ediff{font-weight:800; color:var(--copper-2); font-size:17px; white-space:nowrap; margin-left:10px; font-variant-numeric: tabular-nums;}
 
   .grand-total{
@@ -207,6 +242,7 @@
 </style>
 </head>
 <body>
+<script>if(localStorage.getItem('flowledger_theme')==='dark'){document.body.classList.add('dark');}</script>
 
 <header>
   <div class="header-inner">
@@ -215,7 +251,10 @@
       <h1>FlowLedger</h1>
       <p class="sub">Grup: <b id="groupLabel">—</b></p>
     </div>
-    <button class="grp-btn" onclick="changeGroup()">Değiştir</button>
+    <div class="header-actions">
+      <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Gece modu">🌙</button>
+      <button class="icon-btn grp-btn" onclick="changeGroup()" aria-label="Grubu değiştir" style="width:auto; font-size:14px; padding:0 12px;">Değiştir</button>
+    </div>
   </div>
 </header>
 
@@ -313,6 +352,21 @@ function changeGroup(){
     loadAll();
   }
 }
+
+// ---- Dark mode ----
+// The 'dark' class itself is applied instantly by a tiny inline script at
+// the top of <body> (before this script runs) to avoid a flash of the
+// light theme on load. This just keeps the toggle button's icon in sync.
+function syncThemeButton(){
+  const btn = document.getElementById('themeToggleBtn');
+  if(btn) btn.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+}
+function toggleTheme(){
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('flowledger_theme', isDark ? 'dark' : 'light');
+  syncThemeButton();
+}
+syncThemeButton();
 
 async function loadAll(isBackgroundRefresh){
   if(!kuyuKodu){ renderSetup(); return; }
@@ -538,7 +592,7 @@ function renderGiris(){
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Okuma Ekle</h2>
-      <p style="font-size:15px; color:#5a6b66; margin:-6px 0 18px;">
+      <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
         Giriş yapan: <b style="color:var(--well-deep)">${escapeHtml(kisiAdi)}</b>
         · <a href="#" onclick="changePerson(); return false;" style="color:var(--well); font-weight:700; text-decoration:none;">Sen değil misin?</a>
       </p>
@@ -550,7 +604,7 @@ function renderGiris(){
     </div>
     <div class="card" id="pendingCard" style="display:none;">
       <h2 id="pendingTitle">Bekleyen Girişler</h2>
-      <p style="font-size:13px; color:#8a958f; margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. "Kapat" butonuyla tamamlanınca aşağıdaki listeye taşınır.</p>
+      <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. "Kapat" butonuyla tamamlanınca aşağıdaki listeye taşınır.</p>
       <div id="pendingList"></div>
     </div>
     <div class="card">
@@ -679,12 +733,12 @@ function renderFatura(){
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Fatura Gir</h2>
-      <p style="font-size:15px; color:#5a6b66; margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
+      <p style="font-size:15px; color:var(--muted); margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
       <div class="field">
         <label for="billDate">Fatura Tarihi</label>
         <input type="date" id="billDate" value="${todayDateStr()}">
       </div>
-      <p style="font-size:13px; color:#8a958f; margin:-12px 0 18px;">Faturanın üzerindeki tarihi gir — geç giriyorsan bile gerçek tarihi seç, sistem sulamaları doğru döneme ayırır.</p>
+      <p style="font-size:13px; color:var(--muted-soft); margin:-12px 0 18px;">Faturanın üzerindeki tarihi gir — geç giriyorsan bile gerçek tarihi seç, sistem sulamaları doğru döneme ayırır.</p>
       <div class="field">
         <label for="billTotal">Fatura Tutarı (TL)</label>
         <input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060">
