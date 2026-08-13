@@ -218,6 +218,10 @@
     background:
       radial-gradient(circle, var(--paper-warm) 0 6px, transparent 7px) center/100% 100% no-repeat;
   }
+  .signature{
+    text-align:center; font-family:var(--font-display); font-style:italic;
+    font-size:14px; color:var(--muted-soft); margin:8px 0 0; opacity:0.8;
+  }
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
     background:var(--well-deep); color:#fff; padding:14px 22px; border-radius:12px;
@@ -589,6 +593,7 @@ function renderHome(){
         <div class="sub">${hasHistory ? (periods.length-1) + ' kapanmış dönem' : 'Henüz kapanmış dönem yok'}</div>
       </div>
     </button>
+    <p class="signature">Kazım Süngü tarafından yapıldı</p>
   `;
 }
 
