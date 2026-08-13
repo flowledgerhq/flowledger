@@ -465,19 +465,19 @@ function renderHome(){
   const hasHistory = periods.length > 1;
 
   document.getElementById('mainArea').innerHTML = `
-    <button class="big-btn" onclick="renderGiris()">
+    <button class="big-btn" onclick="goGiris()">
       <div class="icon copper">✏️</div>
       <div>Okuma Ekle
         <div class="sub">Pompayı açtığında ve kapattığında değerleri gir</div>
       </div>
     </button>
-    <button class="big-btn" onclick="renderFatura()">
+    <button class="big-btn" onclick="goFatura()">
       <div class="icon well">🧾</div>
       <div>Fatura Gir
         <div class="sub">${openPeriod.readings.length} okuma bekliyor · dönemi kapat</div>
       </div>
     </button>
-    <button class="big-btn" onclick="renderGecmis()">
+    <button class="big-btn" onclick="goGecmis()">
       <div class="icon well">📋</div>
       <div>Geçmiş Faturalar
         <div class="sub">${hasHistory ? (periods.length-1) + ' kapanmış dönem' : 'Henüz kapanmış dönem yok'}</div>
@@ -490,7 +490,7 @@ function renderGiris(){
   currentScreen = 'giris';
 
   document.getElementById('mainArea').innerHTML = `
-    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+    <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Okuma Ekle</h2>
       <p style="font-size:15px; color:#5a6b66; margin:-6px 0 18px;">
@@ -620,7 +620,7 @@ function renderFatura(){
 
   if(openPeriod.readings.length === 0){
     document.getElementById('mainArea').innerHTML = `
-      <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+      <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
       <div class="card">
         <h2>Fatura Gir</h2>
         <div class="empty">Bu dönemde henüz hiç okuma girilmedi.<br>Önce "Okuma Ekle" ile en az bir kayıt gir.</div>
@@ -631,7 +631,7 @@ function renderFatura(){
 
   billMethod = 'oransal';
   document.getElementById('mainArea').innerHTML = `
-    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+    <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Fatura Gir</h2>
       <p style="font-size:15px; color:#5a6b66; margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
@@ -684,7 +684,7 @@ async function submitBill(){
     if(error) throw error;
     toast('✓ Dönem kapatıldı');
     await loadAll();
-    renderSonuc(computePeriods().filter(p=>p.closed).length - 1);
+    goSonuc(computePeriods().filter(p=>p.closed).length - 1);
   }catch(e){
     toast('Hata oldu, tekrar dene');
   }finally{
@@ -697,17 +697,17 @@ function renderGecmis(){
   const periods = computePeriods().filter(p => p.closed).reverse();
   if(periods.length === 0){
     document.getElementById('mainArea').innerHTML = `
-      <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+      <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
       <div class="empty">Henüz kapanmış bir fatura dönemi yok.</div>
     `;
     return;
   }
   document.getElementById('mainArea').innerHTML = `
-    <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
+    <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     ${periods.map(p => {
       const date = new Date(billCutoffTimestamp(p.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
       return `
-        <div class="period-item" onclick="renderSonuc(${p.index-1})">
+        <div class="period-item" onclick="goSonuc(${p.index-1})">
           <div class="pdate">${date}</div>
           <div class="ptotal">${money(p.donem.toplam_tutar)}</div>
         </div>
@@ -731,7 +731,7 @@ function renderSonuc(periodIndexZeroBased){
   const grandTotal = result.rows.reduce((s,r)=>s+(r.tutar||0),0);
 
   document.getElementById('mainArea').innerHTML = `
-    <button class="back-btn" onclick="renderGecmis()">‹ Geçmiş</button>
+    <button class="back-btn" onclick="history.back()">‹ Geçmiş</button>
     <div class="card">
       <h2>${date ? date + ' Faturası' : 'Bu Dönem'}</h2>
       ${farkHtml}
@@ -754,7 +754,31 @@ function renderSonuc(periodIndexZeroBased){
   `;
 }
 
+// ---- Back-button support (Android) ----
+// Screens are rendered by directly swapping innerHTML, so by default the
+// browser/TWA has no navigation history to go "back" through — Android's
+// back button just closes the app instead of returning to the previous
+// screen. These wrapper functions push a history entry whenever the user
+// navigates forward (tapping into a screen), and back-buttons in the UI
+// call history.back() instead of re-rendering directly, so both the
+// on-screen back button and the hardware/gesture back button behave the
+// same way and pop through the same stack.
+function goGiris(){ history.pushState({screen:'giris'}, '', '#giris'); renderGiris(); }
+function goFatura(){ history.pushState({screen:'fatura'}, '', '#fatura'); renderFatura(); }
+function goGecmis(){ history.pushState({screen:'gecmis'}, '', '#gecmis'); renderGecmis(); }
+function goSonuc(idx){ history.pushState({screen:'sonuc', arg:idx}, '', '#sonuc-'+idx); renderSonuc(idx); }
+
+window.addEventListener('popstate', (e) => {
+  const state = e.state || {screen:'home'};
+  if(state.screen === 'giris') renderGiris();
+  else if(state.screen === 'fatura') renderFatura();
+  else if(state.screen === 'gecmis') renderGecmis();
+  else if(state.screen === 'sonuc') renderSonuc(state.arg);
+  else renderHome();
+});
+
 // init
+history.replaceState({screen:'home'}, '', location.pathname);
 loadAll();
 setInterval(() => loadAll(true), 15000);
 
