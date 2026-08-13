@@ -34,6 +34,7 @@
      a dark well-deep background in light mode too, so they stay as-is —
      only the page surface, cards, and text need to flip. */
   body.dark{
+    color-scheme: dark;
     --ink:#e2e8f0;
     --paper:#0f172a;
     --paper-warm:#1e293b;
@@ -149,6 +150,12 @@
     width:100%; font-size:22px; padding:16px 14px;
     border:2px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink);
     -webkit-appearance:none;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type=date]{
+    width:100%; font-size:20px; padding:14px 14px;
+    border:2px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink);
+    font-family: -apple-system, Roboto, 'Segoe UI', system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
   }
   input:focus{outline:3px solid var(--well); outline-offset:1px;}
