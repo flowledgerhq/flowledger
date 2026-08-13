@@ -182,6 +182,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
+// tracks what's on screen so background refresh doesn't yank the user away.
+// screens: 'home' | 'gecmis' | { name:'sonuc', arg:<periodIndex> } | 'giris' | 'fatura' (last two: paused, no auto-redraw)
+let currentScreen = 'home';
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -206,9 +209,14 @@ function changeGroup(){
   }
 }
 
-async function loadAll(){
+async function loadAll(isBackgroundRefresh){
   if(!kuyuKodu){ renderSetup(); return; }
   document.getElementById('groupLabel').textContent = kuyuKodu;
+  // While the user is filling out a form, don't touch the screen at all —
+  // just skip redrawing (data will still be fresh next time they navigate).
+  if(isBackgroundRefresh && (currentScreen === 'giris' || currentScreen === 'fatura')){
+    return;
+  }
   try{
     const [okumalarRes, donemlerRes] = await Promise.all([
       sb.from('okumalar').select('*').eq('kuyu_kodu', kuyuKodu).order('created_at', {ascending:true}),
@@ -218,10 +226,20 @@ async function loadAll(){
     if(donemlerRes.error) throw donemlerRes.error;
     cache.okumalar = okumalarRes.data || [];
     cache.donemler = donemlerRes.data || [];
-    renderHome();
+    redrawCurrentScreen();
   }catch(e){
-    document.getElementById('mainArea').innerHTML = `<div class="empty">Veriler yüklenemedi.<br>İnterneti kontrol et.</div>`;
+    if(!isBackgroundRefresh){
+      document.getElementById('mainArea').innerHTML = `<div class="empty">Veriler yüklenemedi.<br>İnterneti kontrol et.</div>`;
+    }
+    // on a background refresh failure, just leave the current screen as-is
   }
+}
+
+function redrawCurrentScreen(){
+  if(currentScreen === 'home') renderHome();
+  else if(currentScreen === 'gecmis') renderGecmis();
+  else if(currentScreen && currentScreen.name === 'sonuc') renderSonuc(currentScreen.arg);
+  // 'giris' / 'fatura' are intentionally left alone (see loadAll)
 }
 
 function renderSetup(){
@@ -300,6 +318,7 @@ function calcPeriodResult(period){
 
 // ---- Screens ----
 function renderHome(){
+  currentScreen = 'home';
   const periods = computePeriods();
   const openPeriod = periods[periods.length-1];
   const hasHistory = periods.length > 1;
@@ -327,6 +346,7 @@ function renderHome(){
 }
 
 function renderGiris(){
+  currentScreen = 'giris';
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
     <div class="card">
@@ -369,6 +389,7 @@ async function addReading(){
 }
 
 function renderFatura(){
+  currentScreen = 'fatura';
   const periods = computePeriods();
   const openPeriod = periods[periods.length-1];
   const result = calcPeriodResult(openPeriod);
@@ -433,6 +454,7 @@ async function submitBill(){
 }
 
 function renderGecmis(){
+  currentScreen = 'gecmis';
   const periods = computePeriods().filter(p => p.closed).reverse();
   if(periods.length === 0){
     document.getElementById('mainArea').innerHTML = `
@@ -456,6 +478,7 @@ function renderGecmis(){
 }
 
 function renderSonuc(periodIndexZeroBased){
+  currentScreen = { name: 'sonuc', arg: periodIndexZeroBased };
   const periods = computePeriods();
   const period = periods[periodIndexZeroBased];
   const result = calcPeriodResult(period);
@@ -494,7 +517,7 @@ function renderSonuc(periodIndexZeroBased){
 
 // init
 loadAll();
-setInterval(loadAll, 15000);
+setInterval(() => loadAll(true), 15000);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
