@@ -145,6 +145,16 @@
     padding:14px 16px; font-size:15px; margin-bottom:16px; color:#6b4423;
   }
 
+  .entry-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 0; border-bottom:1px solid var(--line);
+    font-size:15px;
+  }
+  .entry-row:last-child{border-bottom:none;}
+  .entry-row .ename{font-weight:800; font-size:16px;}
+  .entry-row .edate{color:#7a877f; font-size:13px; margin-top:2px;}
+  .entry-row .ediff{font-weight:800; color:var(--copper-2); font-size:17px; white-space:nowrap; margin-left:10px;}
+
   .grand-total{
     background:var(--well-deep); color:#fff; border-radius:14px;
     padding:18px; text-align:center; margin-top:6px;
@@ -197,6 +207,11 @@ function escapeHtml(s){
 }
 function money(n){
   return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' TL';
+}
+function formatDateTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('tr-TR', {day:'2-digit', month:'short'}) + ' · ' +
+         d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
 }
 
 function changeGroup(){
@@ -347,6 +362,9 @@ function renderHome(){
 
 function renderGiris(){
   currentScreen = 'giris';
+  const periods = computePeriods();
+  const openReadings = periods[periods.length-1].readings.slice().reverse();
+
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
     <div class="card">
@@ -365,6 +383,18 @@ function renderGiris(){
       </div>
       <button class="action copper" onclick="addReading()">Kaydet</button>
     </div>
+    <div class="card">
+      <h2>Bu Döneme Ait Kayıtlar (${openReadings.length})</h2>
+      ${openReadings.length === 0 ? '<div class="empty">Henüz kayıt yok.</div>' : openReadings.map(r => `
+        <div class="entry-row">
+          <div>
+            <div class="ename">${escapeHtml(r.kisi_adi)}</div>
+            <div class="edate">${formatDateTime(r.created_at)} · ${r.acma_kw} → ${r.kapatma_kw}</div>
+          </div>
+          <div class="ediff">${(r.kapatma_kw - r.acma_kw).toFixed(1)} kW</div>
+        </div>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -382,7 +412,7 @@ async function addReading(){
     if(error) throw error;
     toast('✓ Kaydedildi');
     await loadAll();
-    renderHome();
+    renderGiris();
   }catch(e){
     toast('Hata oldu, tekrar dene');
   }
