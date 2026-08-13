@@ -501,15 +501,11 @@ function renderGiris(){
         <label for="pacma">Açma Değeri (kW)</label>
         <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302">
       </div>
-      <div class="field">
-        <label for="pkapatma">Kapatma Değeri (kW) <span style="font-weight:400; color:#8a958f;">— biliyorsan gir</span></label>
-        <input type="number" id="pkapatma" inputmode="decimal" placeholder="henüz kapatmadıysan boş bırak">
-      </div>
       <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
     </div>
     <div class="card" id="pendingCard" style="display:none;">
       <h2 id="pendingTitle">Bekleyen Girişler</h2>
-      <p style="font-size:13px; color:#8a958f; margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. Kapatma değeri girilince aşağıdaki listeye taşınır.</p>
+      <p style="font-size:13px; color:#8a958f; margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. "Kapat" butonuyla tamamlanınca aşağıdaki listeye taşınır.</p>
       <div id="pendingList"></div>
     </div>
     <div class="card">
@@ -596,20 +592,17 @@ async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
   const name = kisiAdi;
   const acma = parseFloat(document.getElementById('pacma').value);
-  const kapatmaRaw = document.getElementById('pkapatma').value;
-  const kapatma = kapatmaRaw === '' ? null : parseFloat(kapatmaRaw);
   if(isNaN(acma)){ toast('Açma değerini gir'); return; }
-  if(kapatma !== null && (isNaN(kapatma) || kapatma < acma)){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
 
   isSavingReading = true;
   const btn = document.getElementById('saveReadingBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('okumalar').insert({
-      kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: kapatma
+      kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: null
     });
     if(error) throw error;
-    toast(kapatma === null ? '✓ Açma değeri kaydedildi (bekliyor)' : '✓ Kaydedildi');
+    toast('✓ Açma değeri kaydedildi (bekliyor)');
     await loadAll();
     renderGiris();
   }catch(e){
