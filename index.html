@@ -191,6 +191,23 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
 let kisiAdi = localStorage.getItem('flowledger_kisi_adi') || '';
+// Devices set up before group-code normalization existed may still have a
+// differently-cased/spaced code saved. Re-normalize on every load and
+// silently re-save it, so everyone converges on the exact same value.
+if(kuyuKodu){
+  const fixed = normalizeGroupCode(kuyuKodu);
+  if(fixed !== kuyuKodu){
+    kuyuKodu = fixed;
+    localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
+  }
+}
+if(kisiAdi){
+  const fixedName = kisiAdi.trim().replace(/\s+/g, ' ');
+  if(fixedName !== kisiAdi){
+    kisiAdi = fixedName;
+    localStorage.setItem('flowledger_kisi_adi', kisiAdi);
+  }
+}
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
@@ -375,7 +392,16 @@ function computePeriods(){
 // falls back to created_at for older bills entered before this field existed.
 function billCutoffTimestamp(d){
   if(d.fatura_tarihi){
-    return new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
+    const dateOnly = new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
+    // Never let the boundary extend past the moment the bill was actually
+    // submitted. Normally fatura_tarihi is EARLIER than created_at (bill
+    // entered a few days late), so the end-of-day cutoff correctly trims
+    // out readings typed between the real bill date and the late entry.
+    // But when a bill is closed the same day it's dated (the common case),
+    // end-of-day is LATER than created_at — using it as-is would sweep up
+    // any reading added right after closing, instead of starting the new
+    // open period. Taking the earlier of the two fixes both cases.
+    return dateOnly < d.created_at ? dateOnly : d.created_at;
   }
   return d.created_at;
 }
