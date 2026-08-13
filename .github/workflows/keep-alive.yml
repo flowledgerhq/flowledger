@@ -1,0 +1,20 @@
+name: 3 - Keep Supabase Awake
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Her Pazar ve Çarşamba 06:00 UTC (yaklaşık 09:00 Türkiye saati).
+    # Supabase 7 gün hiç sorgu almazsa projeyi durduruyor;
+    # haftada 2 kez dokunmak güvenli bir pay bırakıyor.
+    - cron: "0 6 * * 0,3"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Supabase to reset the inactivity timer
+        run: |
+          curl -sS \
+            "https://cgacictzeziolwaalpyx.supabase.co/rest/v1/donemler?select=id&limit=1" \
+            -H "apikey: sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e" \
+            -H "Authorization: Bearer sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e"
