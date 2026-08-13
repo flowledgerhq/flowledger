@@ -195,6 +195,8 @@ let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
 // screens: 'home' | 'gecmis' | { name:'sonuc', arg:<periodIndex> } | 'giris' | 'fatura' (last two: paused, no auto-redraw)
 let currentScreen = 'home';
+let isSavingReading = false;
+let isSavingBill = false;
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -212,6 +214,18 @@ function formatDateTime(iso){
   const d = new Date(iso);
   return d.toLocaleDateString('tr-TR', {day:'2-digit', month:'short'}) + ' · ' +
          d.toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'});
+}
+// Groups people correctly even if the name was typed with different
+// capitalization or stray spaces across entries (e.g. "ahmet " vs "Ahmet").
+function nameKey(name){
+  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+}
+function displayName(name){
+  return name.trim().replace(/\s+/g, ' ')
+    .toLocaleLowerCase('tr-TR')
+    .split(' ')
+    .map(w => w ? w.charAt(0).toLocaleUpperCase('tr-TR') + w.slice(1) : w)
+    .join(' ');
 }
 
 function changeGroup(){
@@ -297,9 +311,10 @@ function computePeriods(){
 function groupByPerson(readings){
   const map = {};
   readings.forEach(r => {
-    if(!map[r.kisi_adi]) map[r.kisi_adi] = { name: r.kisi_adi, total: 0, count: 0 };
-    map[r.kisi_adi].total += (r.kapatma_kw - r.acma_kw);
-    map[r.kisi_adi].count += 1;
+    const key = nameKey(r.kisi_adi);
+    if(!map[key]) map[key] = { name: displayName(r.kisi_adi), total: 0, count: 0 };
+    map[key].total += (r.kapatma_kw - r.acma_kw);
+    map[key].count += 1;
   });
   return Object.values(map);
 }
@@ -381,14 +396,14 @@ function renderGiris(){
         <label for="pkapatma">Kapatma Değeri (kW)</label>
         <input type="number" id="pkapatma" inputmode="decimal" placeholder="örn. 2883">
       </div>
-      <button class="action copper" onclick="addReading()">Kaydet</button>
+      <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
     </div>
     <div class="card">
       <h2>Bu Döneme Ait Kayıtlar (${openReadings.length})</h2>
       ${openReadings.length === 0 ? '<div class="empty">Henüz kayıt yok.</div>' : openReadings.map(r => `
         <div class="entry-row">
           <div>
-            <div class="ename">${escapeHtml(r.kisi_adi)}</div>
+            <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
             <div class="edate">${formatDateTime(r.created_at)} · ${r.acma_kw} → ${r.kapatma_kw}</div>
           </div>
           <div class="ediff">${(r.kapatma_kw - r.acma_kw).toFixed(1)} kW</div>
@@ -399,12 +414,17 @@ function renderGiris(){
 }
 
 async function addReading(){
-  const name = document.getElementById('pname').value.trim();
+  if(isSavingReading) return; // ignore double-taps while a save is already in flight
+  const name = document.getElementById('pname').value.trim().replace(/\s+/g, ' ');
   const acma = parseFloat(document.getElementById('pacma').value);
   const kapatma = parseFloat(document.getElementById('pkapatma').value);
   if(!name){ toast('Adını gir'); return; }
   if(isNaN(acma) || isNaN(kapatma)){ toast('Açma ve kapatma değerlerini gir'); return; }
   if(kapatma < acma){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
+
+  isSavingReading = true;
+  const btn = document.getElementById('saveReadingBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('okumalar').insert({
       kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: kapatma
@@ -415,6 +435,8 @@ async function addReading(){
     renderGiris();
   }catch(e){
     toast('Hata oldu, tekrar dene');
+  }finally{
+    isSavingReading = false;
   }
 }
 
@@ -455,7 +477,7 @@ function renderFatura(){
         <div class="choice-btn" id="mEsit" onclick="setBillMethod('esit')">Eşit Paylaş</div>
       </div>
       <div class="choice-help">"Kullanıma göre": çok kullanan farktan da çok pay alır. "Eşit paylaş": fark herkese eşit bölünür.</div>
-      <button class="action primary" onclick="submitBill()">Dönemi Kapat</button>
+      <button class="action primary" id="saveBillBtn" onclick="submitBill()">Dönemi Kapat</button>
     </div>
   `;
 }
@@ -465,11 +487,16 @@ function setBillMethod(m){
   document.getElementById('mEsit').classList.toggle('active', m==='esit');
 }
 async function submitBill(){
+  if(isSavingBill) return;
   const total = parseFloat(document.getElementById('billTotal').value);
   const kwRaw = document.getElementById('billKw').value;
   if(isNaN(total) || total <= 0){ toast('Fatura tutarını gir'); return; }
   const billKw = kwRaw === '' ? null : parseFloat(kwRaw);
   if(!confirm(`${money(total)} tutarında bu dönem kapatılsın mı?\n\nBu işlem geri alınamaz.`)) return;
+
+  isSavingBill = true;
+  const btn = document.getElementById('saveBillBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('donemler').insert({
       kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw, dagitim_yontemi: billMethod
@@ -480,6 +507,8 @@ async function submitBill(){
     renderSonuc(computePeriods().filter(p=>p.closed).length - 1);
   }catch(e){
     toast('Hata oldu, tekrar dene');
+  }finally{
+    isSavingBill = false;
   }
 }
 
