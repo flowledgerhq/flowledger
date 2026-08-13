@@ -9,10 +9,14 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:#1c2b28;
     --paper:#f5f2e9;
+    --paper-warm:#efe8d4;
     --well:#254a44;
     --well-deep:#16302c;
     --copper:#b5652e;
@@ -20,6 +24,8 @@
     --warn:#a13d2b;
     --good:#3d7a5c;
     --line: rgba(28,43,40,0.16);
+    --shadow: 0 2px 10px rgba(22,48,44,0.07), 0 1px 2px rgba(22,48,44,0.06);
+    --font-display: 'Roboto Slab', Georgia, 'Times New Roman', serif;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -37,19 +43,30 @@
   header{
     background:var(--well-deep);
     color:#fff;
-    padding:20px 18px;
+    padding:20px 18px 26px;
     display:flex; align-items:center; gap:12px;
+    position:relative;
+    overflow:hidden;
+  }
+  /* Signature: a soft ripple of water beneath the header, tying the app's
+     "shared well" subject into the one place we spend visual boldness. */
+  header::after{
+    content:"";
+    position:absolute; left:0; right:0; bottom:0; height:10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 Q 15 0 30 5 T 60 5 T 90 5 T 120 5 V10 H0 Z' fill='%23f5f2e9' fill-opacity='1'/%3E%3Cpath d='M0 7 Q 15 3 30 7 T 60 7 T 90 7 T 120 7 V10 H0 Z' fill='%23f5f2e9' fill-opacity='0.55'/%3E%3C/svg%3E");
+    background-size: 120px 10px;
+    background-repeat: repeat-x;
   }
   header img{width:44px;height:44px;border-radius:10px;}
   header .htext{flex:1;}
-  header h1{font-size:22px; margin:0; font-weight:800;}
+  header h1{font-family:var(--font-display); font-size:23px; margin:0; font-weight:700; letter-spacing:0.2px;}
   header .sub{font-size:14px; color:#b9d0c8; margin:2px 0 0;}
   header .grp-btn{
     background:rgba(255,255,255,0.14); border:none; color:#fff;
     font-size:14px; padding:10px 12px; border-radius:8px; cursor:pointer;
   }
 
-  main{padding:20px 0 60px;}
+  main{padding:24px 0 60px;}
 
   .big-btn{
     display:block; width:100%;
@@ -58,6 +75,7 @@
     text-align:left; cursor:pointer;
     font-size:20px; font-weight:700; color:var(--ink);
     display:flex; align-items:center; gap:16px;
+    box-shadow:var(--shadow);
   }
   .big-btn .icon{
     width:52px; height:52px; border-radius:12px; flex-shrink:0;
@@ -77,14 +95,16 @@
   .card{
     background:#fff; border:2px solid var(--line); border-radius:16px;
     padding:20px; margin-bottom:18px;
+    box-shadow:var(--shadow);
   }
-  .card h2{font-size:20px; margin:0 0 16px; font-weight:800;}
+  .card h2{font-family:var(--font-display); font-size:20px; margin:0 0 16px; font-weight:700;}
 
   label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well-deep);}
   input[type=text], input[type=number]{
     width:100%; font-size:22px; padding:16px 14px;
     border:2px solid var(--line); border-radius:12px; background:#fff; color:var(--ink);
     -webkit-appearance:none;
+    font-variant-numeric: tabular-nums;
   }
   input:focus{outline:3px solid var(--well); outline-offset:1px;}
   .field{margin-bottom:18px;}
@@ -93,11 +113,11 @@
     width:100%; font-size:20px; font-weight:800;
     border:none; border-radius:14px; padding:18px 16px; cursor:pointer;
   }
-  button.action.primary{background:var(--well); color:#fff;}
-  button.action.copper{background:var(--copper); color:#fff;}
+  button.action.primary{background:var(--well); color:#fff; box-shadow:0 2px 8px rgba(37,74,68,0.35);}
+  button.action.copper{background:var(--copper); color:#fff; box-shadow:0 2px 8px rgba(181,101,46,0.35);}
   button.action.ghost{background:#eee6d6; color:var(--ink);}
   button:active{transform:scale(0.98);}
-  button:disabled{opacity:0.5;}
+  button:disabled{opacity:0.5; box-shadow:none;}
 
   .choice-row{display:flex; gap:12px; margin-bottom:18px;}
   .choice-btn{
@@ -108,25 +128,43 @@
   .choice-help{font-size:14px; color:#5a6b66; margin:-10px 0 18px;}
 
   .person-card{
-    background:#fbf8f0; border:2px solid var(--line); border-radius:14px;
+    background:var(--paper-warm); border:2px solid var(--line); border-radius:14px;
     padding:16px 18px; margin-bottom:12px;
   }
-  .person-card .pname{font-size:19px; font-weight:800; margin:0 0 4px;}
-  .person-card .pkw{font-size:15px; color:#5a6b66;}
+  .person-card .pname{font-family:var(--font-display); font-size:19px; font-weight:700; margin:0 0 4px;}
+  .person-card .pkw{font-size:15px; color:#5a6b66; font-variant-numeric: tabular-nums;}
   .person-card .ptutar{
-    font-size:30px; font-weight:900; color:var(--copper-2); margin-top:8px;
+    font-family:var(--font-display); font-size:31px; font-weight:800; color:var(--copper-2); margin-top:8px;
+    font-variant-numeric: tabular-nums;
   }
-  .person-card .ptutar .lbl{font-size:14px; font-weight:600; color:#5a6b66; display:block; margin-bottom:2px;}
+  .person-card .ptutar .lbl{font-family:-apple-system, Roboto, 'Segoe UI', system-ui, sans-serif; font-size:14px; font-weight:600; color:#5a6b66; display:block; margin-bottom:2px;}
 
   .period-item{
     background:#fff; border:2px solid var(--line); border-radius:14px;
-    padding:16px 18px; margin-bottom:12px; cursor:pointer;
+    padding:14px 18px; margin-bottom:12px; cursor:pointer;
+    display:flex; align-items:center; gap:14px;
+    box-shadow:var(--shadow);
   }
-  .period-item .pdate{font-size:15px; color:#5a6b66; margin-bottom:4px;}
-  .period-item .ptotal{font-size:22px; font-weight:800; color:var(--well-deep);}
+  .period-item .pnum{
+    font-family:var(--font-display); font-size:15px; font-weight:700; color:var(--well);
+    background:var(--paper-warm); border-radius:10px;
+    width:36px; height:36px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .period-item .pbody{flex:1; min-width:0;}
+  .period-item .pdate{font-size:15px; color:#5a6b66; margin-bottom:2px;}
+  .period-item .ptotal{font-family:var(--font-display); font-size:21px; font-weight:700; color:var(--well-deep); font-variant-numeric: tabular-nums;}
 
   .empty{
-    text-align:center; padding:40px 16px; color:#7a877f; font-size:17px;
+    text-align:center; padding:44px 16px; color:#7a877f; font-size:17px;
+  }
+  .empty::before{
+    content:"";
+    display:block; margin:0 auto 14px;
+    width:44px; height:44px; border-radius:50%;
+    border:2px solid var(--line);
+    background:
+      radial-gradient(circle, var(--paper-warm) 0 6px, transparent 7px) center/100% 100% no-repeat;
   }
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
@@ -137,7 +175,7 @@
   .toast.show{opacity:1;}
 
   .setup-screen{padding:50px 18px; text-align:center;}
-  .setup-screen h2{font-size:26px; margin-bottom:10px;}
+  .setup-screen h2{font-family:var(--font-display); font-size:27px; margin-bottom:10px; font-weight:700;}
   .setup-screen p{color:#5a6b66; font-size:17px; line-height:1.6; margin-bottom:24px;}
 
   .alert-box{
@@ -152,15 +190,15 @@
   }
   .entry-row:last-child{border-bottom:none;}
   .entry-row .ename{font-weight:800; font-size:16px;}
-  .entry-row .edate{color:#7a877f; font-size:13px; margin-top:2px;}
-  .entry-row .ediff{font-weight:800; color:var(--copper-2); font-size:17px; white-space:nowrap; margin-left:10px;}
+  .entry-row .edate{color:#7a877f; font-size:13px; margin-top:2px; font-variant-numeric: tabular-nums;}
+  .entry-row .ediff{font-weight:800; color:var(--copper-2); font-size:17px; white-space:nowrap; margin-left:10px; font-variant-numeric: tabular-nums;}
 
   .grand-total{
     background:var(--well-deep); color:#fff; border-radius:14px;
     padding:18px; text-align:center; margin-top:6px;
   }
   .grand-total .lbl{font-size:14px; color:#b9d0c8; margin-bottom:4px;}
-  .grand-total .amt{font-size:26px; font-weight:900;}
+  .grand-total .amt{font-family:var(--font-display); font-size:27px; font-weight:800; font-variant-numeric: tabular-nums;}
 </style>
 </head>
 <body>
@@ -708,8 +746,11 @@ function renderGecmis(){
       const date = new Date(billCutoffTimestamp(p.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
       return `
         <div class="period-item" onclick="goSonuc(${p.index-1})">
-          <div class="pdate">${date}</div>
-          <div class="ptotal">${money(p.donem.toplam_tutar)}</div>
+          <div class="pnum">${String(p.index).padStart(2,'0')}</div>
+          <div class="pbody">
+            <div class="pdate">${date}</div>
+            <div class="ptotal">${money(p.donem.toplam_tutar)}</div>
+          </div>
         </div>
       `;
     }).join('')}
