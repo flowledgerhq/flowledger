@@ -190,6 +190,7 @@ const SUPABASE_KEY = "sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
+let kisiAdi = localStorage.getItem('flowledger_kisi_adi') || '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
@@ -220,6 +221,12 @@ function formatDateTime(iso){
 function nameKey(name){
   return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
 }
+// Group codes are meant to be typed by multiple people on different phones,
+// so a stray capital letter or trailing space should never silently create
+// a second, empty group. Normalize to lowercase/trimmed before it's ever used.
+function normalizeGroupCode(code){
+  return code.trim().replace(/\s+/g, '-').toLocaleLowerCase('tr-TR');
+}
 function displayName(name){
   return name.trim().replace(/\s+/g, ' ')
     .toLocaleLowerCase('tr-TR')
@@ -231,7 +238,7 @@ function displayName(name){
 function changeGroup(){
   const val = prompt('Grup kodu girin (paylaştığın kişilerle aynı kodu kullan):', kuyuKodu || '');
   if(val && val.trim()){
-    kuyuKodu = val.trim();
+    kuyuKodu = normalizeGroupCode(val);
     localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
     document.getElementById('groupLabel').textContent = kuyuKodu;
     loadAll();
@@ -240,6 +247,7 @@ function changeGroup(){
 
 async function loadAll(isBackgroundRefresh){
   if(!kuyuKodu){ renderSetup(); return; }
+  if(!kisiAdi){ renderNameSetup(); return; }
   document.getElementById('groupLabel').textContent = kuyuKodu;
   // While the user is filling out a form, don't touch the screen at all —
   // just skip redrawing (data will still be fresh next time they navigate).
@@ -276,21 +284,62 @@ function renderSetup(){
   document.getElementById('mainArea').innerHTML = `
     <div class="setup-screen">
       <h2>Hoş geldin</h2>
-      <p>Ortak kuyu kullanımını kolayca paylaştırmak için önce bir grup kodu belirle.<br>Bu kodu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
+      <p>Ortak kuyu kullanımını kolayca paylaştırmak için önce bir grup kodu ve adını gir.<br>Grup kodunu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
       <div class="field" style="text-align:left;">
         <label for="setupCode">Grup Kodu</label>
         <input type="text" id="setupCode" placeholder="örn. sungu-kuyu">
+      </div>
+      <div class="field" style="text-align:left;">
+        <label for="setupName">Adın</label>
+        <input type="text" id="setupName" placeholder="örn. Ahmet">
       </div>
       <button class="action primary" onclick="setupGroup()">Devam Et</button>
     </div>
   `;
 }
 function setupGroup(){
-  const val = document.getElementById('setupCode').value.trim();
-  if(!val){ toast('Bir grup kodu gir'); return; }
-  kuyuKodu = val;
+  const codeVal = document.getElementById('setupCode').value.trim();
+  const nameVal = document.getElementById('setupName').value.trim().replace(/\s+/g, ' ');
+  if(!codeVal){ toast('Bir grup kodu gir'); return; }
+  if(!nameVal){ toast('Adını gir'); return; }
+  kuyuKodu = normalizeGroupCode(codeVal);
+  kisiAdi = nameVal;
   localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
+  localStorage.setItem('flowledger_kisi_adi', kisiAdi);
   loadAll();
+}
+
+// Shown once for people who set up their group code before name-per-device
+// existed — asks just for the missing name, keeps the group code as-is.
+function renderNameSetup(){
+  document.getElementById('groupLabel').textContent = kuyuKodu;
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Sen kimsin?</h2>
+      <p>Bu telefondan girdiğin okumaların hangi isme ait olduğunu bilmemiz için adını gir. Bir daha sormayacağız.</p>
+      <div class="field" style="text-align:left;">
+        <label for="setupName2">Adın</label>
+        <input type="text" id="setupName2" placeholder="örn. Ahmet">
+      </div>
+      <button class="action primary" onclick="setupName()">Devam Et</button>
+    </div>
+  `;
+}
+function setupName(){
+  const nameVal = document.getElementById('setupName2').value.trim().replace(/\s+/g, ' ');
+  if(!nameVal){ toast('Adını gir'); return; }
+  kisiAdi = nameVal;
+  localStorage.setItem('flowledger_kisi_adi', kisiAdi);
+  loadAll();
+}
+
+function changePerson(){
+  const val = prompt('Adını gir:', kisiAdi || '');
+  if(val && val.trim()){
+    kisiAdi = val.trim().replace(/\s+/g, ' ');
+    localStorage.setItem('flowledger_kisi_adi', kisiAdi);
+    redrawCurrentScreen();
+  }
 }
 
 // ---- Period computation ----
@@ -384,10 +433,10 @@ function renderGiris(){
     <button class="back-btn" onclick="renderHome()">‹ Ana Menü</button>
     <div class="card">
       <h2>Okuma Ekle</h2>
-      <div class="field">
-        <label for="pname">Adın</label>
-        <input type="text" id="pname" placeholder="örn. Ahmet">
-      </div>
+      <p style="font-size:15px; color:#5a6b66; margin:-6px 0 18px;">
+        Giriş yapan: <b style="color:var(--well-deep)">${escapeHtml(kisiAdi)}</b>
+        · <a href="#" onclick="changePerson(); return false;" style="color:var(--well); font-weight:700; text-decoration:none;">Sen değil misin?</a>
+      </p>
       <div class="field">
         <label for="pacma">Açma Değeri (kW)</label>
         <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302">
@@ -415,10 +464,9 @@ function renderGiris(){
 
 async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
-  const name = document.getElementById('pname').value.trim().replace(/\s+/g, ' ');
+  const name = kisiAdi;
   const acma = parseFloat(document.getElementById('pacma').value);
   const kapatma = parseFloat(document.getElementById('pkapatma').value);
-  if(!name){ toast('Adını gir'); return; }
   if(isNaN(acma) || isNaN(kapatma)){ toast('Açma ve kapatma değerlerini gir'); return; }
   if(kapatma < acma){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
 
