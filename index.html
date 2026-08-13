@@ -147,7 +147,7 @@
   }
   .card h2{font-family:var(--font-display); font-size:20px; margin:0 0 16px; font-weight:700;}
 
-  label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well-deep);}
+  label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well);}
   input[type=text], input[type=number]{
     width:100%; font-size:22px; padding:16px 14px;
     border:2px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink);
@@ -207,7 +207,7 @@
   }
   .period-item .pbody{flex:1; min-width:0;}
   .period-item .pdate{font-size:15px; color:var(--muted); margin-bottom:2px;}
-  .period-item .ptotal{font-family:var(--font-display); font-size:21px; font-weight:700; color:var(--well-deep); font-variant-numeric: tabular-nums;}
+  .period-item .ptotal{font-family:var(--font-display); font-size:21px; font-weight:700; color:var(--well); font-variant-numeric: tabular-nums;}
 
   .empty{
     text-align:center; padding:44px 16px; color:var(--muted-soft); font-size:17px;
@@ -579,6 +579,10 @@ function calcPeriodResult(period){
 // the home screen — only every 45 minutes.
 const WEATHER_CACHE_KEY = 'flowledger_weather_cache';
 const WEATHER_CACHE_MS = 45 * 60 * 1000;
+// Bumped whenever the shape of cached weather data changes (e.g. adding
+// daily forecast fields) so old-format cache entries are treated as stale
+// instead of causing a silent render error on the new "Hava Durumu" screen.
+const WEATHER_CACHE_VERSION = 2;
 
 function weatherDescription(code){
   if(code === 0) return {icon:'☀️', text:'Açık'};
@@ -687,34 +691,42 @@ function renderWeatherPrompt(){
   chip.style.display = '';
 }
 
-async function loadWeather(){
-  const chip = document.getElementById('weatherChip');
-  if(!chip) return;
+// Core fetch+cache logic, independent of which screen is currently shown.
+// Returns {data, coords} on success, or null if no usable location/data.
+async function fetchAndCacheWeather(){
   const cachedRaw = localStorage.getItem(WEATHER_CACHE_KEY);
   if(cachedRaw){
     try{
       const cached = JSON.parse(cachedRaw);
-      if(Date.now() - cached.ts < WEATHER_CACHE_MS){
-        if(cached.data) renderWeatherChip(cached.data, cached.coords); else renderWeatherPrompt();
-        return;
+      if(cached.v === WEATHER_CACHE_VERSION && Date.now() - cached.ts < WEATHER_CACHE_MS){
+        return cached.data ? { data: cached.data, coords: cached.coords } : null;
       }
     }catch(e){}
   }
   try{
     const coords = await getCoords();
     if(!coords){
-      localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ts: Date.now(), data: null}));
-      renderWeatherPrompt();
-      return;
+      localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({v: WEATHER_CACHE_VERSION, ts: Date.now(), data: null}));
+      return null;
     }
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=5`;
     const res = await fetch(url);
     const data = await res.json();
-    localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ts: Date.now(), data, coords}));
-    renderWeatherChip(data, coords);
+    localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({v: WEATHER_CACHE_VERSION, ts: Date.now(), data, coords}));
+    return { data, coords };
   }catch(e){
-    renderWeatherPrompt();
+    return null;
   }
+}
+
+// Home-screen glance: fetches (or reuses cached) weather and updates the
+// home-screen weather card. No-ops if that card isn't on screen.
+async function loadWeather(){
+  const chip = document.getElementById('weatherChip');
+  if(!chip) return;
+  const result = await fetchAndCacheWeather();
+  if(result) renderWeatherChip(result.data, result.coords);
+  else renderWeatherPrompt();
 }
 
 // Full weather screen: current conditions + 5-day forecast, reachable by
@@ -727,6 +739,18 @@ function renderHava(){
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card" id="havaCard"><div class="empty">Yükleniyor…</div></div>
   `;
+  ensureFreshWeatherThenRender();
+}
+// If the cached weather is missing, stale, or in an old format (e.g. from
+// before the 5-day forecast was added), transparently fetches fresh data
+// — reusing the already-saved location, no re-prompt — before rendering.
+async function ensureFreshWeatherThenRender(){
+  let cached = null;
+  try{ cached = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY)); }catch(e){}
+  const valid = cached && cached.v === WEATHER_CACHE_VERSION && cached.data && (Date.now() - cached.ts < WEATHER_CACHE_MS);
+  if(!valid){
+    await fetchAndCacheWeather();
+  }
   renderHavaContent();
 }
 function renderHavaContent(){
@@ -734,7 +758,7 @@ function renderHavaContent(){
   if(!cardEl) return;
   let cached = null;
   try{ cached = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY)); }catch(e){}
-  if(!cached || !cached.data){
+  if(!cached || cached.v !== WEATHER_CACHE_VERSION || !cached.data){
     cardEl.innerHTML = `
       <h2>Hava Durumu</h2>
       <div class="empty">Konum ayarlanmadı.</div>
@@ -776,7 +800,7 @@ async function changeWeatherLocationInHava(){
   localStorage.removeItem(WEATHER_CACHE_KEY);
   const cardEl = document.getElementById('havaCard');
   if(cardEl) cardEl.innerHTML = '<div class="empty">Yükleniyor…</div>';
-  await loadWeather();
+  await fetchAndCacheWeather();
   renderHavaContent();
 }
 function goHava(){ history.pushState({screen:'hava'}, '', '#hava'); renderHava(); }
@@ -826,7 +850,7 @@ function renderGiris(){
     <div class="card">
       <h2>Okuma Ekle</h2>
       <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
-        Giriş yapan: <b style="color:var(--well-deep)">${escapeHtml(kisiAdi)}</b>
+        Giriş yapan: <b style="color:var(--well)">${escapeHtml(kisiAdi)}</b>
         · <a href="#" onclick="changePerson(); return false;" style="color:var(--well); font-weight:700; text-decoration:none;">Sen değil misin?</a>
       </p>
       <div class="field">
