@@ -634,22 +634,19 @@ function computePeriods(){
   return periods;
 }
 // Returns the ISO timestamp that should act as this bill's period boundary.
-// Prefers the user-entered fatura_tarihi (end of that calendar day) and
-// falls back to created_at for older bills entered before this field existed.
+// fatura_tarihi is DB-enforced NOT NULL (see Faz 1 hardening), so this
+// always has a real user-entered date to work with.
 function billCutoffTimestamp(d){
-  if(d.fatura_tarihi){
-    const dateOnly = new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
-    // Never let the boundary extend past the moment the bill was actually
-    // submitted. Normally fatura_tarihi is EARLIER than created_at (bill
-    // entered a few days late), so the end-of-day cutoff correctly trims
-    // out readings typed between the real bill date and the late entry.
-    // But when a bill is closed the same day it's dated (the common case),
-    // end-of-day is LATER than created_at — using it as-is would sweep up
-    // any reading added right after closing, instead of starting the new
-    // open period. Taking the earlier of the two fixes both cases.
-    return dateOnly < d.created_at ? dateOnly : d.created_at;
-  }
-  return d.created_at;
+  const dateOnly = new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
+  // Never let the boundary extend past the moment the bill was actually
+  // submitted. Normally fatura_tarihi is EARLIER than created_at (bill
+  // entered a few days late), so the end-of-day cutoff correctly trims
+  // out readings typed between the real bill date and the late entry.
+  // But when a bill is closed the same day it's dated (the common case),
+  // end-of-day is LATER than created_at — using it as-is would sweep up
+  // any reading added right after closing, instead of starting the new
+  // open period. Taking the earlier of the two fixes both cases.
+  return dateOnly < d.created_at ? dateOnly : d.created_at;
 }
 function groupByPerson(readings){
   const map = {};
