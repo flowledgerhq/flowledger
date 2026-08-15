@@ -557,6 +557,8 @@ async function submitAuth(){
       ? 'Bu e-posta zaten kayıtlı, "Giriş Yap" sekmesini kullan.'
       : m.includes('Email not confirmed')
       ? 'Önce e-postana gelen linke tıklaman lazım.'
+      : m.toLowerCase().includes('rate limit')
+      ? 'Çok fazla e-posta istendi, birkaç dakika sonra tekrar dene.'
       : m;
   }finally{
     btn.disabled = false;
@@ -651,7 +653,10 @@ async function submitForgotPassword(){
     hideModal();
     toast('✓ Link gönderildi, e-postana bak');
   }catch(e){
-    toast('Hata oldu, tekrar dene');
+    const m = e.message || '';
+    toast(m.toLowerCase().includes('rate limit')
+      ? 'Çok fazla e-posta istendi, birkaç dakika sonra tekrar dene'
+      : 'Hata oldu, tekrar dene');
     if(btn){ btn.disabled = false; btn.textContent = 'Sıfırlama Linki Gönder'; }
   }
 }
