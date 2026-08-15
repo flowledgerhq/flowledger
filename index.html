@@ -1159,26 +1159,38 @@ async function submitBill(){
   if(isSavingBill) return;
   const billDate = document.getElementById('billDate').value;
   const total = parseFloat(document.getElementById('billTotal').value);
-  const kwRaw = document.getElementById('billKw').value;
   if(!billDate){ toast('Fatura tarihini seç'); return; }
   if(isNaN(total) || total <= 0){ toast('Fatura tutarını gir'); return; }
+  showModal(`
+    <h2>Dönemi Kapat</h2>
+    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${money(total)} tutarında, ${billDate.split('-').reverse().join('.')} tarihli fatura kaydedilsin mi?<br><b style="color:var(--warn)">Bu işlem geri alınamaz.</b></p>
+    <button class="action primary" id="modalConfirmBillBtn" onclick="confirmSubmitBill()">Evet, Dönemi Kapat</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+  `);
+}
+async function confirmSubmitBill(){
+  if(isSavingBill) return;
+  const billDate = document.getElementById('billDate').value;
+  const total = parseFloat(document.getElementById('billTotal').value);
+  const kwRaw = document.getElementById('billKw').value;
   const billKw = kwRaw === '' ? null : parseFloat(kwRaw);
-  if(!confirm(`${money(total)} tutarında, ${billDate.split('-').reverse().join('.')} tarihli fatura kaydedilsin mi?\n\nBu işlem geri alınamaz.`)) return;
 
   isSavingBill = true;
-  const btn = document.getElementById('saveBillBtn');
-  if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
+  const modalBtn = document.getElementById('modalConfirmBillBtn');
+  if(modalBtn){ modalBtn.disabled = true; modalBtn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('donemler').insert({
       kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw,
       dagitim_yontemi: billMethod, fatura_tarihi: billDate
     });
     if(error) throw error;
+    hideModal();
     toast('✓ Dönem kapatıldı');
     await loadAll();
     goSonuc(computePeriods().filter(p=>p.closed).length - 1);
   }catch(e){
     toast('Hata oldu, tekrar dene');
+    if(modalBtn){ modalBtn.disabled = false; modalBtn.textContent = 'Evet, Dönemi Kapat'; }
   }finally{
     isSavingBill = false;
   }
