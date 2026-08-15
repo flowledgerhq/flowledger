@@ -726,25 +726,58 @@ async function reverseGeocode(lat, lon){
   }
 }
 
-// Asks for a typed place name and geocodes it via Open-Meteo. Used as a
-// fallback when GPS isn't available/granted, and as the main path when
-// the person taps "Konumu Değiştir".
+// In-page replacement for the native prompt() this used to call. Keeps
+// the exact same external contract (returns a Promise resolving to
+// {lat, lon, name} or null) so getCoords() below needs no changes —
+// only the UI mechanism changed, same reason as the other modals: native
+// dialogs are unreliable in standalone/PWA mode.
+let _locationPromptResolve = null;
 function promptForLocation(){
-  return new Promise(async (resolve) => {
-    const place = prompt('Hangi yerin hava durumunu görmek istersin? (örn. "Bafra, Samsun")');
-    if(!place || !place.trim()){ resolve(null); return; }
-    try{
-      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=tr&name=${encodeURIComponent(place.trim())}`);
-      const data = await res.json();
-      const hit = data.results && data.results[0];
-      if(!hit){ toast('Bu yer bulunamadı, tekrar dene'); resolve(null); return; }
-      const coords = { lat: hit.latitude, lon: hit.longitude, name: [hit.name, hit.admin1].filter(Boolean).join(', ') };
-      localStorage.setItem('flowledger_geo', JSON.stringify(coords));
-      resolve(coords);
-    }catch(e){
-      resolve(null);
-    }
+  return new Promise((resolve) => {
+    _locationPromptResolve = resolve;
+    showModal(`
+      <h2>Konum</h2>
+      <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">Hangi yerin hava durumunu görmek istersin?</p>
+      <div class="field">
+        <label for="modalPlace">Yer</label>
+        <input type="text" id="modalPlace" placeholder='örn. "Bafra, Samsun"'>
+      </div>
+      <button class="action primary" id="modalPlaceBtn" onclick="submitLocationPrompt()">Devam Et</button>
+      <button class="action ghost" style="margin-top:10px;" onclick="cancelLocationPrompt()">Vazgeç</button>
+    `);
+    setTimeout(() => { const el = document.getElementById('modalPlace'); if(el) el.focus(); }, 50);
   });
+}
+async function submitLocationPrompt(){
+  const place = document.getElementById('modalPlace').value.trim();
+  if(!place){ toast('Bir yer adı gir'); return; }
+  const btn = document.getElementById('modalPlaceBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Aranıyor…'; }
+  try{
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=tr&name=${encodeURIComponent(place)}`);
+    const data = await res.json();
+    const hit = data.results && data.results[0];
+    if(!hit){
+      toast('Bu yer bulunamadı, tekrar dene');
+      if(btn){ btn.disabled = false; btn.textContent = 'Devam Et'; }
+      return;
+    }
+    const coords = { lat: hit.latitude, lon: hit.longitude, name: [hit.name, hit.admin1].filter(Boolean).join(', ') };
+    localStorage.setItem('flowledger_geo', JSON.stringify(coords));
+    hideModal();
+    const resolve = _locationPromptResolve;
+    _locationPromptResolve = null;
+    if(resolve) resolve(coords);
+  }catch(e){
+    toast('Hata oldu, tekrar dene');
+    if(btn){ btn.disabled = false; btn.textContent = 'Devam Et'; }
+  }
+}
+function cancelLocationPrompt(){
+  hideModal();
+  const resolve = _locationPromptResolve;
+  _locationPromptResolve = null;
+  if(resolve) resolve(null);
 }
 function getCoords(){
   const cachedGeo = localStorage.getItem('flowledger_geo');
