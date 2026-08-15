@@ -1042,9 +1042,11 @@ async function confirmCompleteReading(id){
   const btn = document.getElementById('modalConfirmBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
-    const { error } = await sb.from('okumalar')
-      .update({ kapatma_kw: kapatma, tamamlanma_tarihi: new Date().toISOString() })
-      .eq('id', id);
+    // complete_usage RPC: server-side aynı RLS+trigger zincirini çalıştırır
+    // (kendi grubun dışına dokunamazsın, tamamlanmış kayıt değişmez,
+    // tamamlanma_tarihi server-side atanır) — ama artık ham tablo
+    // erişimi yerine stabil, tek bir API çağrısı üzerinden.
+    const { error } = await sb.rpc('complete_usage', { p_id: id, p_kapatma_kw: kapatma });
     if(error) throw error;
     hideModal();
     toast('✓ Tamamlandı');
