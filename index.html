@@ -267,6 +267,7 @@
     </div>
     <div class="header-actions">
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Gece modu">🌙</button>
+      <button class="icon-btn" onclick="changePersonGuarded()" aria-label="Cihaz sahibini değiştir" title="Cihaz Sahibi">👤</button>
       <button class="icon-btn grp-btn" onclick="changeGroup()" aria-label="Grubu değiştir" style="width:auto; font-size:14px; padding:0 12px;">Değiştir</button>
     </div>
   </div>
@@ -473,13 +474,26 @@ function setupName(){
   loadAll();
 }
 
+// Deliberately NOT reachable from the reading-entry screen. Identity is
+// meant to be paired to this device, not switched casually mid-entry —
+// otherwise anyone holding the phone could add a reading under someone
+// else's name. Reaching this always requires an explicit confirm() first
+// (see changePersonGuarded) spelling out the consequence, so a real owner
+// change stays a deliberate act instead of a one-tap impersonation.
 function changePerson(){
-  const val = prompt('Adını gir:', kisiAdi || '');
+  const val = prompt('Bu cihazın yeni sahibinin adını gir:', kisiAdi || '');
   if(val && val.trim()){
     kisiAdi = val.trim().replace(/\s+/g, ' ');
     localStorage.setItem('flowledger_kisi_adi', kisiAdi);
     redrawCurrentScreen();
   }
+}
+function changePersonGuarded(){
+  const warn = kisiAdi
+    ? `Bu cihaz şu an "${kisiAdi}" olarak kayıtlı.\n\nCihazın sahibini değiştirirsen, bundan sonra bu telefondan eklenecek tüm okumalar yeni isme ait olarak kaydedilir.\n\nBu cihaz gerçekten senin değil mi? Emin isen devam et.`
+    : 'Cihazın sahibini ayarla.';
+  if(!confirm(warn)) return;
+  changePerson();
 }
 
 // ---- Period computation ----
@@ -851,7 +865,6 @@ function renderGiris(){
       <h2>Okuma Ekle</h2>
       <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
         Giriş yapan: <b style="color:var(--well)">${escapeHtml(kisiAdi)}</b>
-        · <a href="#" onclick="changePerson(); return false;" style="color:var(--well); font-weight:700; text-decoration:none;">Sen değil misin?</a>
       </p>
       <div class="field">
         <label for="pacma">Açma Değeri (kW)</label>
