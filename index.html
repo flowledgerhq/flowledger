@@ -302,6 +302,15 @@
 const SUPABASE_URL = "https://cgacictzeziolwaalpyx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Explicit redirect target for auth emails (confirmation + password
+// reset). Supabase's project-level "Site URL" setting has repeatedly
+// pointed to the bare domain root (https://flowledgerhq.github.io/,
+// which only hosts assetlinks.json in a separate repo and 404s) instead
+// of this app's actual path. Passing redirectTo explicitly on every call
+// bypasses that setting entirely — this only needs to be present in the
+// Supabase Dashboard's Redirect URLs allow-list (already added), not be
+// the default Site URL.
+const APP_URL = "https://flowledgerhq.github.io/flowledger/";
 
 // Identity now comes from a real Supabase Auth account + the `members`
 // table (kuyu_kodu, display_name) — not from localStorage. Populated once
@@ -534,7 +543,7 @@ async function submitAuth(){
       if(error) throw error;
       // Başarılıysa onAuthStateChange (SIGNED_IN) devamını halleder.
     } else {
-      const { error } = await sb.auth.signUp({ email, password });
+      const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: APP_URL } });
       if(error) throw error;
       msgEl.style.color = 'var(--good)';
       msgEl.textContent = 'Kayıt alındı! E-postana gelen linke tıkla, sonra "Giriş Yap" sekmesinden gir.';
@@ -637,7 +646,7 @@ async function submitForgotPassword(){
   const btn = document.getElementById('modalForgotBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Gönderiliyor…'; }
   try{
-    const { error } = await sb.auth.resetPasswordForEmail(email);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
     if(error) throw error;
     hideModal();
     toast('✓ Link gönderildi, e-postana bak');
