@@ -278,6 +278,7 @@
     </div>
     <div class="header-actions">
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Gece modu">🌙</button>
+      <button class="icon-btn" id="editProfileBtn" onclick="openEditProfile()" aria-label="Profili Düzenle" style="display:none;">✏️</button>
       <button class="icon-btn wide" id="signOutBtn" onclick="signOut()" aria-label="Çıkış Yap" style="display:none;">🚪 Çıkış</button>
     </div>
   </div>
@@ -446,7 +447,10 @@ async function initAuth(){
       kuyuKodu = '';
       kisiAdi = '';
       document.getElementById('signOutBtn').style.display = 'none';
+      document.getElementById('editProfileBtn').style.display = 'none';
       renderAuth();
+    } else if(event === 'PASSWORD_RECOVERY'){
+      renderNewPassword();
     }
   });
 }
@@ -470,6 +474,7 @@ async function afterAuthReady(){
     kuyuKodu = data.kuyu_kodu;
     kisiAdi = data.display_name;
     document.getElementById('groupLabel').textContent = kuyuKodu;
+    document.getElementById('editProfileBtn').style.display = '';
     loadAll();
   }catch(e){
     document.getElementById('mainArea').innerHTML = `<div class="empty">Profil yüklenemedi.<br>İnterneti kontrol et.</div>`;
@@ -494,6 +499,9 @@ function renderAuth(){
         <label for="authPass">Şifre</label>
         <input type="password" id="authPass" autocomplete="current-password" placeholder="en az 6 karakter">
       </div>
+      <p id="forgotPassLink" style="text-align:right; margin:-10px 0 18px;">
+        <a href="#" onclick="openForgotPassword(); return false;" style="color:var(--well); font-size:14px; font-weight:700; text-decoration:none;">Şifremi unuttum</a>
+      </p>
       <button class="action primary" id="authSubmitBtn" onclick="submitAuth()">Giriş Yap</button>
       <p id="authMsg" style="font-size:14px; margin-top:14px;"></p>
     </div>
@@ -506,6 +514,8 @@ function setAuthTab(mode){
   document.getElementById('authSubmitBtn').textContent = mode==='in' ? 'Giriş Yap' : 'Kayıt Ol';
   const passEl = document.getElementById('authPass');
   passEl.autocomplete = mode==='in' ? 'current-password' : 'new-password';
+  const forgotEl = document.getElementById('forgotPassLink');
+  if(forgotEl) forgotEl.style.display = mode==='in' ? '' : 'none';
   const msgEl = document.getElementById('authMsg');
   msgEl.textContent = '';
   msgEl.style.color = 'var(--muted)';
@@ -599,6 +609,133 @@ function signOut(){
 async function confirmSignOut(){
   hideModal();
   await sb.auth.signOut();
+}
+
+// ---- Password reset ----
+// Two-step Supabase flow: (1) request a reset email while still signed
+// out, (2) when the person taps the link in that email, Supabase opens
+// the app with a recovery session already active and fires a
+// PASSWORD_RECOVERY auth event (handled in initAuth() above) — that's
+// when renderNewPassword() actually appears, not right after step 1.
+function openForgotPassword(){
+  const prefill = (document.getElementById('authEmail') && document.getElementById('authEmail').value.trim()) || '';
+  showModal(`
+    <h2>Şifremi Unuttum</h2>
+    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">E-posta adresini gir, sana bir şifre sıfırlama linki gönderelim.</p>
+    <div class="field">
+      <label for="modalForgotEmail">E-posta</label>
+      <input type="email" id="modalForgotEmail" autocapitalize="off" value="${escapeHtml(prefill)}" placeholder="ornek@mail.com">
+    </div>
+    <button class="action primary" id="modalForgotBtn" onclick="submitForgotPassword()">Sıfırlama Linki Gönder</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+  `);
+  setTimeout(() => { const el = document.getElementById('modalForgotEmail'); if(el) el.focus(); }, 50);
+}
+async function submitForgotPassword(){
+  const email = document.getElementById('modalForgotEmail').value.trim();
+  if(!email){ toast('Bir e-posta adresi gir'); return; }
+  const btn = document.getElementById('modalForgotBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Gönderiliyor…'; }
+  try{
+    const { error } = await sb.auth.resetPasswordForEmail(email);
+    if(error) throw error;
+    hideModal();
+    toast('✓ Link gönderildi, e-postana bak');
+  }catch(e){
+    toast('Hata oldu, tekrar dene');
+    if(btn){ btn.disabled = false; btn.textContent = 'Sıfırlama Linki Gönder'; }
+  }
+}
+// Shown when Supabase confirms a recovery session (person tapped the
+// email link). Not a modal on purpose — this replaces the whole screen
+// so there's no way to accidentally dismiss it and lose the recovery
+// session before setting a new password.
+function renderNewPassword(){
+  document.getElementById('groupLabel').textContent = '—';
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Yeni Şifre Belirle</h2>
+      <p>Hesabın için yeni bir şifre gir.</p>
+      <div class="field" style="text-align:left;">
+        <label for="newPass1">Yeni Şifre</label>
+        <input type="password" id="newPass1" autocomplete="new-password" placeholder="en az 6 karakter">
+      </div>
+      <div class="field" style="text-align:left;">
+        <label for="newPass2">Yeni Şifre (Tekrar)</label>
+        <input type="password" id="newPass2" autocomplete="new-password" placeholder="tekrar gir">
+      </div>
+      <button class="action primary" id="newPassBtn" onclick="submitNewPassword()">Şifreyi Güncelle</button>
+      <p id="newPassMsg" style="font-size:14px; margin-top:14px; color:var(--warn);"></p>
+    </div>
+  `;
+}
+async function submitNewPassword(){
+  const p1 = document.getElementById('newPass1').value;
+  const p2 = document.getElementById('newPass2').value;
+  const msgEl = document.getElementById('newPassMsg');
+  msgEl.textContent = '';
+  if(!p1 || p1.length < 6){ msgEl.textContent = 'Şifre en az 6 karakter olmalı.'; return; }
+  if(p1 !== p2){ msgEl.textContent = 'Şifreler eşleşmiyor.'; return; }
+  const btn = document.getElementById('newPassBtn');
+  btn.disabled = true; btn.textContent = 'Güncelleniyor…';
+  try{
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    if(error) throw error;
+    toast('✓ Şifre güncellendi');
+    await afterAuthReady();
+  }catch(e){
+    msgEl.textContent = e.message || 'Hata oldu, tekrar dene';
+    btn.disabled = false; btn.textContent = 'Şifreyi Güncelle';
+  }
+}
+
+// ---- Profile editing ----
+// Backed by the `members_update_own` RLS policy (auth.uid() = id) that
+// already existed in the DB but had no UI path to reach it — a typo'd
+// display name or group code had no fix before this. Changing kuyu_kodu
+// mid-session is allowed (moves the person to a different group going
+// forward); past okumalar/donemler rows are immutable and untouched.
+function openEditProfile(){
+  showModal(`
+    <h2>Profili Düzenle</h2>
+    <div class="field">
+      <label for="modalEditCode">Grup Kodu</label>
+      <input type="text" id="modalEditCode" value="${escapeHtml(kuyuKodu)}">
+    </div>
+    <div class="field">
+      <label for="modalEditName">Görünen Adın</label>
+      <input type="text" id="modalEditName" value="${escapeHtml(kisiAdi)}">
+    </div>
+    <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Grup kodunu değiştirirsen bundan sonraki kayıtların yeni gruba gider; geçmiş kayıtların değişmez.</p>
+    <button class="action primary" id="modalEditProfileBtn" onclick="submitEditProfile()">Kaydet</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+  `);
+}
+async function submitEditProfile(){
+  const codeVal = document.getElementById('modalEditCode').value.trim();
+  const nameVal = document.getElementById('modalEditName').value.trim().replace(/\s+/g, ' ');
+  if(!codeVal){ toast('Bir grup kodu gir'); return; }
+  if(!nameVal){ toast('Adını gir'); return; }
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) return;
+  const btn = document.getElementById('modalEditProfileBtn');
+  btn.disabled = true; btn.textContent = 'Kaydediliyor…';
+  try{
+    const code = normalizeGroupCode(codeVal);
+    const { error } = await sb.from('members').update({ kuyu_kodu: code, display_name: nameVal }).eq('id', user.id);
+    if(error) throw error;
+    kuyuKodu = code;
+    kisiAdi = nameVal;
+    document.getElementById('groupLabel').textContent = kuyuKodu;
+    hideModal();
+    toast('✓ Profil güncellendi');
+    currentScreen = 'home';
+    history.replaceState({screen:'home'}, '', location.pathname);
+    loadAll();
+  }catch(e){
+    toast('Hata oldu, tekrar dene');
+    btn.disabled = false; btn.textContent = 'Kaydet';
+  }
 }
 
 // ---- Period computation ----
