@@ -249,6 +249,21 @@
   }
   .grand-total .lbl{font-size:14px; color:#b9d0c8; margin-bottom:4px;}
   .grand-total .amt{font-family:var(--font-display); font-size:27px; font-weight:800; font-variant-numeric: tabular-nums;}
+
+  header .icon-btn.wide{
+    width:auto; padding:0 12px; font-size:14px; gap:6px;
+  }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(15,23,21,0.55);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px; z-index:100;
+  }
+  .modal-box{
+    background:var(--surface); border-radius:16px; padding:24px 20px;
+    max-width:440px; width:100%; box-shadow:var(--shadow);
+  }
+  .modal-box h2{font-family:var(--font-display); font-size:20px; margin:0 0 8px; font-weight:700;}
 </style>
 </head>
 <body>
@@ -263,7 +278,7 @@
     </div>
     <div class="header-actions">
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Gece modu">🌙</button>
-      <button class="icon-btn" id="signOutBtn" onclick="signOut()" aria-label="Çıkış Yap" title="Çıkış Yap" style="display:none;">🚪</button>
+      <button class="icon-btn wide" id="signOutBtn" onclick="signOut()" aria-label="Çıkış Yap" style="display:none;">🚪 Çıkış</button>
     </div>
   </div>
 </header>
@@ -275,6 +290,10 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+  <div class="modal-box" id="modalBox"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
@@ -301,6 +320,19 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2600);
+}
+// In-page modal replacing native prompt()/confirm(). Standalone/PWA mode
+// (especially iOS "Ana Ekrana Ekle") can render browser-native dialogs
+// unreliably or not at all, so anything that needs confirmation or a
+// small input uses this instead — styled consistently with the rest of
+// the app (.card look via .modal-box).
+function showModal(html){
+  document.getElementById('modalBox').innerHTML = html;
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+function hideModal(){
+  document.getElementById('modalOverlay').style.display = 'none';
+  document.getElementById('modalBox').innerHTML = '';
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -556,8 +588,16 @@ async function submitProfileSetup(){
   }
 }
 
-async function signOut(){
-  if(!confirm('Çıkış yapmak istediğine emin misin?')) return;
+function signOut(){
+  showModal(`
+    <h2>Çıkış Yap</h2>
+    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">Çıkış yapmak istediğine emin misin?</p>
+    <button class="action primary" onclick="confirmSignOut()">Evet, Çıkış Yap</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+  `);
+}
+async function confirmSignOut(){
+  hideModal();
   await sb.auth.signOut();
 }
 
@@ -977,25 +1017,43 @@ function renderPendingList(){
   `).join('');
 }
 
-async function completeReading(id){
+function completeReading(id){
   const row = cache.okumalar.find(o => o.id === id);
   if(!row) return;
-  const val = prompt(`${displayName(row.kisi_adi)} için kapatma değerini gir (açma: ${row.acma_kw} kW):`);
-  if(val === null) return; // cancelled
+  showModal(`
+    <h2>Kapatma Değeri</h2>
+    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${escapeHtml(displayName(row.kisi_adi))} için (açma: ${row.acma_kw} kW)</p>
+    <div class="field">
+      <label for="modalKapatma">Kapatma Değeri (kW)</label>
+      <input type="number" id="modalKapatma" inputmode="decimal" placeholder="örn. 2350">
+    </div>
+    <button class="action copper" id="modalConfirmBtn" onclick="confirmCompleteReading('${id}')">Kaydet</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">İptal</button>
+  `);
+  setTimeout(() => { const el = document.getElementById('modalKapatma'); if(el) el.focus(); }, 50);
+}
+async function confirmCompleteReading(id){
+  const row = cache.okumalar.find(o => o.id === id);
+  if(!row) return;
+  const val = document.getElementById('modalKapatma').value;
   const kapatma = parseFloat(val);
   if(isNaN(kapatma)){ toast('Geçerli bir sayı gir'); return; }
   if(kapatma < row.acma_kw){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
+  const btn = document.getElementById('modalConfirmBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('okumalar')
       .update({ kapatma_kw: kapatma, tamamlanma_tarihi: new Date().toISOString() })
       .eq('id', id);
     if(error) throw error;
+    hideModal();
     toast('✓ Tamamlandı');
     await loadAll();
     renderOpenReadingsList();
     renderPendingList();
   }catch(e){
     toast('Hata oldu, tekrar dene');
+    if(btn){ btn.disabled = false; btn.textContent = 'Kaydet'; }
   }
 }
 
