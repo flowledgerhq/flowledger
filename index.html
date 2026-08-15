@@ -107,10 +107,6 @@
   header .htext{flex:1;}
   header h1{font-family:var(--font-display); font-size:23px; margin:0; font-weight:700; letter-spacing:0.2px;}
   header .sub{font-size:14px; color:#b9d0c8; margin:2px 0 0;}
-  header .grp-btn{
-    background:rgba(255,255,255,0.14); border:none; color:#fff;
-    font-size:14px; padding:10px 12px; border-radius:8px; cursor:pointer;
-  }
 
   main{padding:24px 0 60px;}
 
@@ -146,7 +142,7 @@
   .card h2{font-family:var(--font-display); font-size:20px; margin:0 0 16px; font-weight:700;}
 
   label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well);}
-  input[type=text], input[type=number]{
+  input[type=text], input[type=number], input[type=password], input[type=email]{
     width:100%; font-size:22px; padding:16px 14px;
     border:2px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink);
     -webkit-appearance:none;
@@ -267,8 +263,7 @@
     </div>
     <div class="header-actions">
       <button class="icon-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Gece modu">🌙</button>
-      <button class="icon-btn" onclick="changePersonGuarded()" aria-label="Cihaz sahibini değiştir" title="Cihaz Sahibi">👤</button>
-      <button class="icon-btn grp-btn" onclick="changeGroup()" aria-label="Grubu değiştir" style="width:auto; font-size:14px; padding:0 12px;">Değiştir</button>
+      <button class="icon-btn" id="signOutBtn" onclick="signOut()" aria-label="Çıkış Yap" title="Çıkış Yap" style="display:none;">🚪</button>
     </div>
   </div>
 </header>
@@ -288,25 +283,11 @@ const SUPABASE_URL = "https://cgacictzeziolwaalpyx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_0xSNpARCfpE9WbKve8ocWQ_vaH0J_1e";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let kuyuKodu = localStorage.getItem('flowledger_kuyu_kodu') || '';
-let kisiAdi = localStorage.getItem('flowledger_kisi_adi') || '';
-// Devices set up before group-code normalization existed may still have a
-// differently-cased/spaced code saved. Re-normalize on every load and
-// silently re-save it, so everyone converges on the exact same value.
-if(kuyuKodu){
-  const fixed = normalizeGroupCode(kuyuKodu);
-  if(fixed !== kuyuKodu){
-    kuyuKodu = fixed;
-    localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
-  }
-}
-if(kisiAdi){
-  const fixedName = kisiAdi.trim().replace(/\s+/g, ' ');
-  if(fixedName !== kisiAdi){
-    kisiAdi = fixedName;
-    localStorage.setItem('flowledger_kisi_adi', kisiAdi);
-  }
-}
+// Identity now comes from a real Supabase Auth account + the `members`
+// table (kuyu_kodu, display_name) — not from localStorage. Populated once
+// a session is confirmed; see initAuth()/afterAuthReady() below.
+let kuyuKodu = '';
+let kisiAdi = '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
@@ -358,16 +339,6 @@ function displayName(name){
     .join(' ');
 }
 
-function changeGroup(){
-  const val = prompt('Grup kodu girin (paylaştığın kişilerle aynı kodu kullan):', kuyuKodu || '');
-  if(val && val.trim()){
-    kuyuKodu = normalizeGroupCode(val);
-    localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
-    document.getElementById('groupLabel').textContent = kuyuKodu;
-    loadAll();
-  }
-}
-
 // ---- Dark mode ----
 // The 'dark' class itself is applied instantly by a tiny inline script at
 // the top of <body> (before this script runs) to avoid a flash of the
@@ -384,8 +355,9 @@ function toggleTheme(){
 syncThemeButton();
 
 async function loadAll(isBackgroundRefresh){
-  if(!kuyuKodu){ renderSetup(); return; }
-  if(!kisiAdi){ renderNameSetup(); return; }
+  // Identity is established by initAuth()/afterAuthReady() before this is
+  // ever called for real; this is just a defensive no-op guard.
+  if(!kuyuKodu || !kisiAdi) return;
   document.getElementById('groupLabel').textContent = kuyuKodu;
   // On the "fatura" screen (closing a bill), a background refresh could
   // change the totals mid-edit, so we still skip entirely there. "giris"
@@ -420,80 +392,173 @@ function redrawCurrentScreen(){
   // 'fatura' is intentionally left alone (see loadAll)
 }
 
-function renderSetup(){
+// ---- Auth ----
+// Identity is now a real Supabase Auth account (email+password), not a
+// per-device localStorage guess. One account = one person; that account
+// can be used from any number of devices, and every device just logs in
+// as that person — this is what actually closes the "aile üyesi başkası
+// adına ekleyebiliyor" gap, at the root, instead of patching the UI.
+let authMode = 'in';
+
+async function initAuth(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){
+    await afterAuthReady();
+  } else {
+    renderAuth();
+  }
+  sb.auth.onAuthStateChange((event) => {
+    if(event === 'SIGNED_IN'){
+      afterAuthReady();
+    } else if(event === 'SIGNED_OUT'){
+      kuyuKodu = '';
+      kisiAdi = '';
+      document.getElementById('signOutBtn').style.display = 'none';
+      renderAuth();
+    }
+  });
+}
+
+// Called whenever a live session is confirmed (fresh sign-in, or an
+// already-open session found on load). Looks up this account's row in
+// `members`; if it doesn't exist yet (first login right after email
+// confirmation, or a signup that never finished), sends the person to
+// complete their profile once instead of assuming defaults.
+async function afterAuthReady(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user){ renderAuth(); return; }
+  document.getElementById('signOutBtn').style.display = '';
+  try{
+    const { data, error } = await sb.from('members').select('*').eq('id', user.id).maybeSingle();
+    if(error) throw error;
+    if(!data){
+      renderProfileSetup();
+      return;
+    }
+    kuyuKodu = data.kuyu_kodu;
+    kisiAdi = data.display_name;
+    document.getElementById('groupLabel').textContent = kuyuKodu;
+    loadAll();
+  }catch(e){
+    document.getElementById('mainArea').innerHTML = `<div class="empty">Profil yüklenemedi.<br>İnterneti kontrol et.</div>`;
+  }
+}
+
+function renderAuth(){
   document.getElementById('groupLabel').textContent = '—';
   document.getElementById('mainArea').innerHTML = `
     <div class="setup-screen">
       <h2>Hoş geldin</h2>
-      <p>Ortak kuyu kullanımını kolayca paylaştırmak için önce bir grup kodu ve adını gir.<br>Grup kodunu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
-      <div class="field" style="text-align:left;">
-        <label for="setupCode">Grup Kodu</label>
-        <input type="text" id="setupCode" placeholder="örn. sungu-kuyu">
+      <p>Devam etmek için giriş yap ya da yeni bir hesap oluştur.</p>
+      <div class="choice-row">
+        <div class="choice-btn active" id="authTabIn" onclick="setAuthTab('in')">Giriş Yap</div>
+        <div class="choice-btn" id="authTabUp" onclick="setAuthTab('up')">Kayıt Ol</div>
       </div>
       <div class="field" style="text-align:left;">
-        <label for="setupName">Adın</label>
-        <input type="text" id="setupName" placeholder="örn. Ahmet">
+        <label for="authEmail">E-posta</label>
+        <input type="email" id="authEmail" autocapitalize="off" autocomplete="email" placeholder="ornek@mail.com">
       </div>
-      <button class="action primary" onclick="setupGroup()">Devam Et</button>
+      <div class="field" style="text-align:left;">
+        <label for="authPass">Şifre</label>
+        <input type="password" id="authPass" autocomplete="current-password" placeholder="en az 6 karakter">
+      </div>
+      <button class="action primary" id="authSubmitBtn" onclick="submitAuth()">Giriş Yap</button>
+      <p id="authMsg" style="font-size:14px; margin-top:14px;"></p>
     </div>
   `;
 }
-function setupGroup(){
-  const codeVal = document.getElementById('setupCode').value.trim();
-  const nameVal = document.getElementById('setupName').value.trim().replace(/\s+/g, ' ');
-  if(!codeVal){ toast('Bir grup kodu gir'); return; }
-  if(!nameVal){ toast('Adını gir'); return; }
-  kuyuKodu = normalizeGroupCode(codeVal);
-  kisiAdi = nameVal;
-  localStorage.setItem('flowledger_kuyu_kodu', kuyuKodu);
-  localStorage.setItem('flowledger_kisi_adi', kisiAdi);
-  loadAll();
+function setAuthTab(mode){
+  authMode = mode;
+  document.getElementById('authTabIn').classList.toggle('active', mode==='in');
+  document.getElementById('authTabUp').classList.toggle('active', mode==='up');
+  document.getElementById('authSubmitBtn').textContent = mode==='in' ? 'Giriş Yap' : 'Kayıt Ol';
+  const passEl = document.getElementById('authPass');
+  passEl.autocomplete = mode==='in' ? 'current-password' : 'new-password';
+  const msgEl = document.getElementById('authMsg');
+  msgEl.textContent = '';
+  msgEl.style.color = 'var(--muted)';
 }
-
-// Shown once for people who set up their group code before name-per-device
-// existed — asks just for the missing name, keeps the group code as-is.
-function renderNameSetup(){
-  document.getElementById('groupLabel').textContent = kuyuKodu;
-  document.getElementById('mainArea').innerHTML = `
-    <div class="setup-screen">
-      <h2>Sen kimsin?</h2>
-      <p>Bu telefondan girdiğin okumaların hangi isme ait olduğunu bilmemiz için adını gir. Bir daha sormayacağız.</p>
-      <div class="field" style="text-align:left;">
-        <label for="setupName2">Adın</label>
-        <input type="text" id="setupName2" placeholder="örn. Ahmet">
-      </div>
-      <button class="action primary" onclick="setupName()">Devam Et</button>
-    </div>
-  `;
-}
-function setupName(){
-  const nameVal = document.getElementById('setupName2').value.trim().replace(/\s+/g, ' ');
-  if(!nameVal){ toast('Adını gir'); return; }
-  kisiAdi = nameVal;
-  localStorage.setItem('flowledger_kisi_adi', kisiAdi);
-  loadAll();
-}
-
-// Deliberately NOT reachable from the reading-entry screen. Identity is
-// meant to be paired to this device, not switched casually mid-entry —
-// otherwise anyone holding the phone could add a reading under someone
-// else's name. Reaching this always requires an explicit confirm() first
-// (see changePersonGuarded) spelling out the consequence, so a real owner
-// change stays a deliberate act instead of a one-tap impersonation.
-function changePerson(){
-  const val = prompt('Bu cihazın yeni sahibinin adını gir:', kisiAdi || '');
-  if(val && val.trim()){
-    kisiAdi = val.trim().replace(/\s+/g, ' ');
-    localStorage.setItem('flowledger_kisi_adi', kisiAdi);
-    redrawCurrentScreen();
+async function submitAuth(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPass').value;
+  const msgEl = document.getElementById('authMsg');
+  if(!email || !password){ toast('E-posta ve şifre gir'); return; }
+  const btn = document.getElementById('authSubmitBtn');
+  btn.disabled = true;
+  msgEl.textContent = '';
+  try{
+    if(authMode === 'in'){
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      // Başarılıysa onAuthStateChange (SIGNED_IN) devamını halleder.
+    } else {
+      const { error } = await sb.auth.signUp({ email, password });
+      if(error) throw error;
+      msgEl.style.color = 'var(--good)';
+      msgEl.textContent = 'Kayıt alındı! E-postana gelen linke tıkla, sonra "Giriş Yap" sekmesinden gir.';
+    }
+  }catch(e){
+    msgEl.style.color = 'var(--warn)';
+    const m = e.message || '';
+    msgEl.textContent = m.includes('Invalid login')
+      ? 'E-posta veya şifre yanlış.'
+      : m.includes('already registered') || m.includes('already exists')
+      ? 'Bu e-posta zaten kayıtlı, "Giriş Yap" sekmesini kullan.'
+      : m.includes('Email not confirmed')
+      ? 'Önce e-postana gelen linke tıklaman lazım.'
+      : m;
+  }finally{
+    btn.disabled = false;
   }
 }
-function changePersonGuarded(){
-  const warn = kisiAdi
-    ? `Bu cihaz şu an "${kisiAdi}" olarak kayıtlı.\n\nCihazın sahibini değiştirirsen, bundan sonra bu telefondan eklenecek tüm okumalar yeni isme ait olarak kaydedilir.\n\nBu cihaz gerçekten senin değil mi? Emin isen devam et.`
-    : 'Cihazın sahibini ayarla.';
-  if(!confirm(warn)) return;
-  changePerson();
+
+// Shown exactly once per account, right after the first successful login
+// (i.e. right after email confirmation) — establishes which kuyu_kodu
+// group this account belongs to and the display name others will see.
+function renderProfileSetup(){
+  document.getElementById('groupLabel').textContent = '—';
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Profili Tamamla</h2>
+      <p>Ortak kuyu kullanımını kolayca paylaştırmak için bir grup kodu ve görünen adını gir.<br>Grup kodunu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
+      <div class="field" style="text-align:left;">
+        <label for="profCode">Grup Kodu</label>
+        <input type="text" id="profCode" placeholder="örn. sungu-kuyu">
+      </div>
+      <div class="field" style="text-align:left;">
+        <label for="profName">Görünen Adın</label>
+        <input type="text" id="profName" placeholder="örn. Ahmet">
+      </div>
+      <button class="action primary" id="profSubmitBtn" onclick="submitProfileSetup()">Devam Et</button>
+    </div>
+  `;
+}
+async function submitProfileSetup(){
+  const codeVal = document.getElementById('profCode').value.trim();
+  const nameVal = document.getElementById('profName').value.trim().replace(/\s+/g, ' ');
+  if(!codeVal){ toast('Bir grup kodu gir'); return; }
+  if(!nameVal){ toast('Adını gir'); return; }
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user){ renderAuth(); return; }
+  const btn = document.getElementById('profSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Kaydediliyor…';
+  try{
+    const code = normalizeGroupCode(codeVal);
+    const { error } = await sb.from('members').insert({ id: user.id, kuyu_kodu: code, display_name: nameVal });
+    if(error) throw error;
+    kuyuKodu = code;
+    kisiAdi = nameVal;
+    document.getElementById('groupLabel').textContent = kuyuKodu;
+    loadAll();
+  }catch(e){
+    toast('Hata oldu, tekrar dene');
+    btn.disabled = false; btn.textContent = 'Devam Et';
+  }
+}
+
+async function signOut(){
+  if(!confirm('Çıkış yapmak istediğine emin misin?')) return;
+  await sb.auth.signOut();
 }
 
 // ---- Period computation ----
@@ -1152,8 +1217,8 @@ window.addEventListener('popstate', (e) => {
 
 // init
 history.replaceState({screen:'home'}, '', location.pathname);
-loadAll();
-setInterval(() => loadAll(true), 15000);
+initAuth();
+setInterval(() => { if(kuyuKodu && kisiAdi) loadAll(true); }, 15000);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
