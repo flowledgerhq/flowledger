@@ -1422,8 +1422,9 @@ function renderPendingList(){
   listEl.innerHTML = pending.map(r => `
     <div class="pending-row">
       <div>
+        <div style="font-size:15px; font-weight:800; color:var(--well); margin-bottom:4px;">${escapeHtml(personName(r.user_id))} suyu kullanıyor</div>
         <div class="pending-meter">${r.meter_start} kW</div>
-        <div class="pending-meta">${escapeHtml(personName(r.user_id))} · ${formatDateTime(r.started_at)}</div>
+        <div class="pending-meta">Başlangıç · ${formatDateTime(r.started_at)}</div>
         ${meterGapNote(r.meter_gap)}
       </div>
       <button class="action copper" style="width:auto; padding:12px 20px; font-size:16px;" onclick="completeReading('${r.id}')">Kapat</button>
