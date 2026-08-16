@@ -224,7 +224,7 @@
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
     background:var(--well-deep); color:#fff; padding:14px 22px; border-radius:12px;
-    font-size:16px; font-weight:700; z-index:50; opacity:0; pointer-events:none; transition:opacity 0.25s;
+    font-size:16px; font-weight:700; z-index:200; opacity:0; pointer-events:none; transition:opacity 0.25s;
     max-width:90vw; text-align:center;
   }
   .toast.show{opacity:1;}
@@ -1306,7 +1306,11 @@ function renderGiris(){
 // gösteriyor. Ekran kapatılıp yeniden açılmadıkça tekrar sorgulanmıyor
 // (manualStartContext bu ekranın state'i, renderGiris() sıfırlıyor).
 async function loadManualStartContext(forceSuggestedValue=false){
-  if(isLoadingManualStartContext) return;
+  if(isLoadingManualStartContext){
+    if(!forceSuggestedValue) return;
+    while(isLoadingManualStartContext) await new Promise(resolve => setTimeout(resolve, 40));
+    return loadManualStartContext(true);
+  }
   isLoadingManualStartContext = true;
   const pacmaEl = document.getElementById('pacma');
   const saveBtn = document.getElementById('saveReadingBtn');
@@ -1446,6 +1450,8 @@ async function confirmCompleteReading(id){
     if(error) throw error;
     hideModal();
     toast('✓ Tamamlandı');
+    const currentInput = document.getElementById('pacma');
+    if(currentInput){ currentInput.value = kapatma; onMeterStartInput(); }
     await loadAll();
     renderOpenReadingsList();
     renderPendingList();
