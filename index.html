@@ -313,11 +313,11 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const APP_URL = "https://flowledgerhq.github.io/flowledger/";
 
 // Identity now comes from a real Supabase Auth account + the `members`
-// table (kuyu_kodu, display_name) — not from localStorage. Populated once
+// table (group_id, display_name) — not from localStorage. Populated once
 // a session is confirmed; see initAuth()/afterAuthReady() below.
-let kuyuKodu = ''; // legacy, display-only now — group_id is the real access-control identity
-let kisiAdi = '';
 let groupId = '';
+let groupName = '';
+let kisiAdi = '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
@@ -368,12 +368,6 @@ function todayDateStr(){
 function nameKey(name){
   return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
 }
-// Group codes are meant to be typed by multiple people on different phones,
-// so a stray capital letter or trailing space should never silently create
-// a second, empty group. Normalize to lowercase/trimmed before it's ever used.
-function normalizeGroupCode(code){
-  return code.trim().replace(/\s+/g, '-').toLocaleLowerCase('tr-TR');
-}
 function displayName(name){
   return name.trim().replace(/\s+/g, ' ')
     .toLocaleLowerCase('tr-TR')
@@ -401,7 +395,7 @@ async function loadAll(isBackgroundRefresh){
   // Identity is established by initAuth()/afterAuthReady() before this is
   // ever called for real; this is just a defensive no-op guard.
   if(!groupId || !kisiAdi) return;
-  document.getElementById('groupLabel').textContent = kuyuKodu || '—';
+  document.getElementById('groupLabel').textContent = groupName || '—';
   // On the "fatura" screen (closing a bill), a background refresh could
   // change the totals mid-edit, so we still skip entirely there. "giris"
   // is handled below instead: we DO fetch fresh data so everyone's entries
@@ -454,9 +448,9 @@ async function initAuth(){
     if(event === 'SIGNED_IN'){
       afterAuthReady();
     } else if(event === 'SIGNED_OUT'){
-      kuyuKodu = '';
-      kisiAdi = '';
       groupId = '';
+      groupName = '';
+      kisiAdi = '';
       document.getElementById('signOutBtn').style.display = 'none';
       document.getElementById('editProfileBtn').style.display = 'none';
       renderAuth();
@@ -476,7 +470,7 @@ async function afterAuthReady(){
   if(!user){ renderAuth(); return; }
   document.getElementById('signOutBtn').style.display = '';
   try{
-    const { data, error } = await sb.from('members').select('*').eq('id', user.id).maybeSingle();
+    const { data, error } = await sb.from('members').select('*, groups(name)').eq('id', user.id).maybeSingle();
     if(error) throw error;
     if(!data){
       renderProfileSetup();
@@ -492,8 +486,8 @@ async function afterAuthReady(){
       return;
     }
     groupId = data.group_id;
-    kuyuKodu = data.kuyu_kodu; // legacy display-only field, not used for access control anymore
-    document.getElementById('groupLabel').textContent = kuyuKodu || '—';
+    groupName = data.groups ? data.groups.name : '';
+    document.getElementById('groupLabel').textContent = groupName || '—';
     document.getElementById('editProfileBtn').style.display = '';
     loadAll();
   }catch(e){
@@ -577,8 +571,8 @@ async function submitAuth(){
 }
 
 // Shown exactly once per account, right after the first successful login
-// (i.e. right after email confirmation) — establishes which kuyu_kodu
-// group this account belongs to and the display name others will see.
+// (i.e. right after email confirmation) — establishes the display name
+// others will see; group membership is chosen on the next screen.
 function renderProfileSetup(){
   document.getElementById('groupLabel').textContent = '—';
   document.getElementById('mainArea').innerHTML = `
@@ -605,7 +599,7 @@ async function submitProfileSetup(){
     // the join_group()/create_group() RPCs (enforced DB-side by
     // trg_protect_members_group_id), never written directly by the
     // client. Group membership is chosen on the next screen.
-    const { error } = await sb.from('members').insert({ id: user.id, kuyu_kodu: '', display_name: nameVal });
+    const { error } = await sb.from('members').insert({ id: user.id, display_name: nameVal });
     if(error) throw error;
     kisiAdi = nameVal;
     renderGroupChoice();
@@ -617,10 +611,10 @@ async function submitProfileSetup(){
 
 // ---- Group membership (create/join) ----
 // Shown after profile setup (name only, no group yet) or whenever a
-// signed-in account's members row has no group_id. Replaces the old
-// "type your kuyu_kodu freely" step — group_id is now only ever set via
-// the create_group()/join_group() RPCs, never written directly by the
-// client (enforced DB-side by trg_protect_members_group_id).
+// signed-in account's members row has no group_id. Group membership is
+// only ever set via the create_group()/join_group() RPCs, never written
+// directly by the client (enforced DB-side by
+// trg_protect_members_group_id).
 function renderGroupChoice(){
   document.getElementById('groupLabel').textContent = '—';
   document.getElementById('mainArea').innerHTML = `
@@ -816,14 +810,9 @@ async function submitNewPassword(){
 }
 
 // ---- Profile editing ----
-// Group membership is intentionally NOT editable here anymore. Previously
-// this screen let a person freely retype their kuyu_kodu, which meant
-// anyone who knew (or guessed) another group's code could set their own
-// profile to match it and gain full read/insert access to that group's
-// data — kuyu_kodu was acting as a password with no invite/approval step.
-// Group membership is now only ever set by join_group()/create_group()
-// (DB-enforced via trg_protect_members_group_id); only display_name is
-// editable from this screen.
+// Group membership is not editable from this screen. Group membership is
+// only ever set by join_group()/create_group() (DB-enforced via
+// trg_protect_members_group_id); only display_name is editable here.
 function openEditProfile(){
   showModal(`
     <h2>Profili Düzenle</h2>
@@ -1288,7 +1277,7 @@ function renderPendingList(){
   const listEl = document.getElementById('pendingList');
   if(!cardEl || !titleEl || !listEl) return; // screen isn't showing right now
   const pending = cache.okumalar
-    .filter(o => o.kuyu_kodu === kuyuKodu && (o.kapatma_kw === null || o.kapatma_kw === undefined))
+    .filter(o => o.group_id === groupId && (o.kapatma_kw === null || o.kapatma_kw === undefined))
     .slice()
     .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   cardEl.style.display = pending.length === 0 ? 'none' : '';
@@ -1381,7 +1370,7 @@ async function addReading(){
   try{
     const { data: { user } } = await sb.auth.getUser();
     const { error } = await sb.from('okumalar').insert({
-      group_id: groupId, user_id: user.id, kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: null
+      group_id: groupId, user_id: user.id, kisi_adi: name, acma_kw: acma, kapatma_kw: null
     });
     if(error) throw error;
     toast('✓ Açma değeri kaydedildi (bekliyor)');
@@ -1470,7 +1459,7 @@ async function confirmSubmitBill(){
   if(modalBtn){ modalBtn.disabled = true; modalBtn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('donemler').insert({
-      group_id: groupId, kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw,
+      group_id: groupId, toplam_tutar: total, fatura_toplam_kw: billKw,
       dagitim_yontemi: billMethod, fatura_tarihi: billDate
     });
     if(error) throw error;
@@ -1578,7 +1567,7 @@ window.addEventListener('popstate', (e) => {
 // init
 history.replaceState({screen:'home'}, '', location.pathname);
 initAuth();
-setInterval(() => { if(kuyuKodu && kisiAdi) loadAll(true); }, 15000);
+setInterval(() => { if(groupId && kisiAdi) loadAll(true); }, 15000);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
