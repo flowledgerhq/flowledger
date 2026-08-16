@@ -970,9 +970,12 @@ function latestBillDate(){
   return cache.billingPeriods[cache.billingPeriods.length-1].bill_date;
 }
 function openWindowCutoffIso(){
-  const d = latestBillDate();
-  if(!d) return null;
-  return new Date(d + 'T23:59:59.999').toISOString();
+  const latest = cache.billingPeriods[cache.billingPeriods.length-1];
+  if(!latest) return null;
+  // Backend v1 source of truth: the persisted billing_period.cutoff_at
+  // snapshot (bill_date 12:00 Europe/Istanbul). Never reconstruct this
+  // boundary from bill_date in the client.
+  return latest.cutoff_at || null;
 }
 function usageEffectiveTimestamp(s){
   return s.ended_at || s.started_at;
@@ -1693,7 +1696,9 @@ async function confirmSubmitBill(){
     else goGecmis();
   }catch(e){
     if(e && typeof e.message === 'string' && e.message.includes('OPEN_USAGE_CROSSES_BILLING_CUTOFF')){
-      toast('Bu fatura dönemine ait devam eden bir sulama var. Önce kullanımın kapanış değerini gir.');
+      toast('Bu fatura dönemine ait devam eden bir sulama var. Önce kullanımın kapanış değerini gir.', 5000);
+    }else if(e && typeof e.message === 'string' && e.message.includes('BILLING_CUTOFF_NOT_REACHED')){
+      toast('Bu faturanın dönemi henüz tamamlanmadı. Fatura tarihinin öğlen sınırından sonra dönemi kapatabilirsin.', 5000);
     }else{
       toast('Hata oldu, tekrar dene');
     }
