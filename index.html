@@ -315,8 +315,9 @@ const APP_URL = "https://flowledgerhq.github.io/flowledger/";
 // Identity now comes from a real Supabase Auth account + the `members`
 // table (kuyu_kodu, display_name) — not from localStorage. Populated once
 // a session is confirmed; see initAuth()/afterAuthReady() below.
-let kuyuKodu = '';
+let kuyuKodu = ''; // legacy, display-only now — group_id is the real access-control identity
 let kisiAdi = '';
+let groupId = '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
@@ -399,8 +400,8 @@ syncThemeButton();
 async function loadAll(isBackgroundRefresh){
   // Identity is established by initAuth()/afterAuthReady() before this is
   // ever called for real; this is just a defensive no-op guard.
-  if(!kuyuKodu || !kisiAdi) return;
-  document.getElementById('groupLabel').textContent = kuyuKodu;
+  if(!groupId || !kisiAdi) return;
+  document.getElementById('groupLabel').textContent = kuyuKodu || '—';
   // On the "fatura" screen (closing a bill), a background refresh could
   // change the totals mid-edit, so we still skip entirely there. "giris"
   // is handled below instead: we DO fetch fresh data so everyone's entries
@@ -410,8 +411,8 @@ async function loadAll(isBackgroundRefresh){
   }
   try{
     const [okumalarRes, donemlerRes] = await Promise.all([
-      sb.from('okumalar').select('*').eq('kuyu_kodu', kuyuKodu).order('created_at', {ascending:true}),
-      sb.from('donemler').select('*').eq('kuyu_kodu', kuyuKodu).order('created_at', {ascending:true})
+      sb.from('okumalar').select('*').eq('group_id', groupId).order('created_at', {ascending:true}),
+      sb.from('donemler').select('*').eq('group_id', groupId).order('created_at', {ascending:true})
     ]);
     if(okumalarRes.error) throw okumalarRes.error;
     if(donemlerRes.error) throw donemlerRes.error;
@@ -455,6 +456,7 @@ async function initAuth(){
     } else if(event === 'SIGNED_OUT'){
       kuyuKodu = '';
       kisiAdi = '';
+      groupId = '';
       document.getElementById('signOutBtn').style.display = 'none';
       document.getElementById('editProfileBtn').style.display = 'none';
       renderAuth();
@@ -480,9 +482,18 @@ async function afterAuthReady(){
       renderProfileSetup();
       return;
     }
-    kuyuKodu = data.kuyu_kodu;
     kisiAdi = data.display_name;
-    document.getElementById('groupLabel').textContent = kuyuKodu;
+    if(!data.group_id){
+      // Name is set but no group yet (fresh profile, or an account that
+      // never finished joining/creating a group) — group_id can only be
+      // set via join_group()/create_group(), never directly, so this is
+      // the only path back to a working group membership.
+      renderGroupChoice();
+      return;
+    }
+    groupId = data.group_id;
+    kuyuKodu = data.kuyu_kodu; // legacy display-only field, not used for access control anymore
+    document.getElementById('groupLabel').textContent = kuyuKodu || '—';
     document.getElementById('editProfileBtn').style.display = '';
     loadAll();
   }catch(e){
@@ -573,11 +584,7 @@ function renderProfileSetup(){
   document.getElementById('mainArea').innerHTML = `
     <div class="setup-screen">
       <h2>Profili Tamamla</h2>
-      <p>Ortak kuyu kullanımını kolayca paylaştırmak için bir grup kodu ve görünen adını gir.<br>Grup kodunu, birlikte kullandığın diğer kişilere de söyleyeceksin.</p>
-      <div class="field" style="text-align:left;">
-        <label for="profCode">Grup Kodu</label>
-        <input type="text" id="profCode" placeholder="örn. sungu-kuyu">
-      </div>
+      <p>Görünen adını gir — bu, diğer grup üyelerinin okuma listesinde göreceği isim. Grup seçimini bir sonraki adımda yapacaksın.</p>
       <div class="field" style="text-align:left;">
         <label for="profName">Görünen Adın</label>
         <input type="text" id="profName" placeholder="örn. Ahmet">
@@ -587,26 +594,131 @@ function renderProfileSetup(){
   `;
 }
 async function submitProfileSetup(){
-  const codeVal = document.getElementById('profCode').value.trim();
   const nameVal = document.getElementById('profName').value.trim().replace(/\s+/g, ' ');
-  if(!codeVal){ toast('Bir grup kodu gir'); return; }
   if(!nameVal){ toast('Adını gir'); return; }
   const { data: { user } } = await sb.auth.getUser();
   if(!user){ renderAuth(); return; }
   const btn = document.getElementById('profSubmitBtn');
   btn.disabled = true; btn.textContent = 'Kaydediliyor…';
   try{
-    const code = normalizeGroupCode(codeVal);
-    const { error } = await sb.from('members').insert({ id: user.id, kuyu_kodu: code, display_name: nameVal });
+    // group_id is intentionally left unset here — it can only be set by
+    // the join_group()/create_group() RPCs (enforced DB-side by
+    // trg_protect_members_group_id), never written directly by the
+    // client. Group membership is chosen on the next screen.
+    const { error } = await sb.from('members').insert({ id: user.id, kuyu_kodu: '', display_name: nameVal });
     if(error) throw error;
-    kuyuKodu = code;
     kisiAdi = nameVal;
-    document.getElementById('groupLabel').textContent = kuyuKodu;
-    loadAll();
+    renderGroupChoice();
   }catch(e){
     toast('Hata oldu, tekrar dene');
     btn.disabled = false; btn.textContent = 'Devam Et';
   }
+}
+
+// ---- Group membership (create/join) ----
+// Shown after profile setup (name only, no group yet) or whenever a
+// signed-in account's members row has no group_id. Replaces the old
+// "type your kuyu_kodu freely" step — group_id is now only ever set via
+// the create_group()/join_group() RPCs, never written directly by the
+// client (enforced DB-side by trg_protect_members_group_id).
+function renderGroupChoice(){
+  document.getElementById('groupLabel').textContent = '—';
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Kuyu Grubu</h2>
+      <p>Ortak kuyunu kullandığın kişilerle aynı grupta olman gerekiyor. Daha önce bir grup varsa davet kodunu gir; yoksa yeni bir grup oluştur.</p>
+      <button class="action primary" onclick="renderJoinGroup()">Gruba Katıl</button>
+      <button class="action ghost" style="margin-top:10px;" onclick="renderCreateGroup()">Yeni Grup Oluştur</button>
+    </div>
+  `;
+}
+function renderJoinGroup(){
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Gruba Katıl</h2>
+      <p>Grup üyelerinden aldığın davet kodunu gir.</p>
+      <div class="field" style="text-align:left;">
+        <label for="joinCodeInput">Davet Kodu</label>
+        <input type="text" id="joinCodeInput" autocapitalize="characters" placeholder="örn. A4LWYEGL">
+      </div>
+      <button class="action primary" id="joinGroupBtn" onclick="submitJoinGroup()">Katıl</button>
+      <button class="action ghost" style="margin-top:10px;" onclick="renderGroupChoice()">‹ Geri</button>
+      <p id="joinGroupMsg" style="font-size:14px; margin-top:14px; color:var(--warn);"></p>
+    </div>
+  `;
+}
+async function submitJoinGroup(){
+  const code = document.getElementById('joinCodeInput').value.trim();
+  const msgEl = document.getElementById('joinGroupMsg');
+  msgEl.textContent = '';
+  if(!code){ toast('Bir davet kodu gir'); return; }
+  const btn = document.getElementById('joinGroupBtn');
+  btn.disabled = true; btn.textContent = 'Katılıyor…';
+  try{
+    const { error } = await sb.rpc('join_group', { p_code: code });
+    if(error) throw error;
+    toast('✓ Gruba katıldın');
+    await afterAuthReady();
+  }catch(e){
+    const m = e.message || '';
+    msgEl.textContent = m.includes('INVALID_JOIN_CODE')
+      ? 'Bu davet kodu geçersiz, kontrol edip tekrar dene.'
+      : m.includes('ALREADY_IN_GROUP')
+      ? 'Zaten bir gruba bağlısın.'
+      : 'Hata oldu, tekrar dene.';
+    btn.disabled = false; btn.textContent = 'Katıl';
+  }
+}
+function renderCreateGroup(){
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Yeni Grup Oluştur</h2>
+      <p>Grubuna bir isim ver. Ardından sana bir davet kodu vereceğiz — bu kodu birlikte kuyu kullandığın kişilere gönder.</p>
+      <div class="field" style="text-align:left;">
+        <label for="groupNameInput">Grup Adı</label>
+        <input type="text" id="groupNameInput" placeholder="örn. Süngü Kuyusu">
+      </div>
+      <button class="action primary" id="createGroupBtn" onclick="submitCreateGroup()">Grubu Oluştur</button>
+      <button class="action ghost" style="margin-top:10px;" onclick="renderGroupChoice()">‹ Geri</button>
+      <p id="createGroupMsg" style="font-size:14px; margin-top:14px; color:var(--warn);"></p>
+    </div>
+  `;
+}
+async function submitCreateGroup(){
+  const name = document.getElementById('groupNameInput').value.trim();
+  const msgEl = document.getElementById('createGroupMsg');
+  msgEl.textContent = '';
+  if(!name){ toast('Bir grup adı gir'); return; }
+  const btn = document.getElementById('createGroupBtn');
+  btn.disabled = true; btn.textContent = 'Oluşturuluyor…';
+  try{
+    const { data, error } = await sb.rpc('create_group', { p_name: name });
+    if(error) throw error;
+    const row = data && data[0];
+    renderGroupCreated(row ? row.join_code : '');
+  }catch(e){
+    const m = e.message || '';
+    msgEl.textContent = m.includes('ALREADY_IN_GROUP')
+      ? 'Zaten bir gruba bağlısın.'
+      : 'Hata oldu, tekrar dene.';
+    btn.disabled = false; btn.textContent = 'Grubu Oluştur';
+  }
+}
+// Shown once, right after a group is created — the join_code only ever
+// appears here and wherever the person chooses to look it up again
+// later; it's not silently reused anywhere else in the UI.
+function renderGroupCreated(joinCode){
+  document.getElementById('mainArea').innerHTML = `
+    <div class="setup-screen">
+      <h2>Grubun Hazır</h2>
+      <p>Davet kodun:</p>
+      <div class="card" style="text-align:center;">
+        <div style="font-family:var(--font-display); font-size:36px; font-weight:800; letter-spacing:2px; color:var(--well);">${escapeHtml(joinCode)}</div>
+      </div>
+      <p style="margin-top:18px;">Bu kodu birlikte kuyu kullandığın kişilere gönder — "Gruba Katıl" ekranından bu kodu girerek sana katılabilirler.</p>
+      <button class="action primary" style="margin-top:10px;" onclick="afterAuthReady()">Devam Et</button>
+    </div>
+  `;
 }
 
 function signOut(){
@@ -704,43 +816,37 @@ async function submitNewPassword(){
 }
 
 // ---- Profile editing ----
-// Backed by the `members_update_own` RLS policy (auth.uid() = id) that
-// already existed in the DB but had no UI path to reach it — a typo'd
-// display name or group code had no fix before this. Changing kuyu_kodu
-// mid-session is allowed (moves the person to a different group going
-// forward); past okumalar/donemler rows are immutable and untouched.
+// Group membership is intentionally NOT editable here anymore. Previously
+// this screen let a person freely retype their kuyu_kodu, which meant
+// anyone who knew (or guessed) another group's code could set their own
+// profile to match it and gain full read/insert access to that group's
+// data — kuyu_kodu was acting as a password with no invite/approval step.
+// Group membership is now only ever set by join_group()/create_group()
+// (DB-enforced via trg_protect_members_group_id); only display_name is
+// editable from this screen.
 function openEditProfile(){
   showModal(`
     <h2>Profili Düzenle</h2>
     <div class="field">
-      <label for="modalEditCode">Grup Kodu</label>
-      <input type="text" id="modalEditCode" value="${escapeHtml(kuyuKodu)}">
-    </div>
-    <div class="field">
       <label for="modalEditName">Görünen Adın</label>
       <input type="text" id="modalEditName" value="${escapeHtml(kisiAdi)}">
     </div>
-    <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Grup kodunu değiştirirsen bundan sonraki kayıtların yeni gruba gider; geçmiş kayıtların değişmez.</p>
+    <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Grubunu değiştirmek istiyorsan bu bir sonraki güncellemede eklenecek; şimdilik yalnızca görünen adını güncelleyebilirsin.</p>
     <button class="action primary" id="modalEditProfileBtn" onclick="submitEditProfile()">Kaydet</button>
     <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
   `);
 }
 async function submitEditProfile(){
-  const codeVal = document.getElementById('modalEditCode').value.trim();
   const nameVal = document.getElementById('modalEditName').value.trim().replace(/\s+/g, ' ');
-  if(!codeVal){ toast('Bir grup kodu gir'); return; }
   if(!nameVal){ toast('Adını gir'); return; }
   const { data: { user } } = await sb.auth.getUser();
   if(!user) return;
   const btn = document.getElementById('modalEditProfileBtn');
   btn.disabled = true; btn.textContent = 'Kaydediliyor…';
   try{
-    const code = normalizeGroupCode(codeVal);
-    const { error } = await sb.from('members').update({ kuyu_kodu: code, display_name: nameVal }).eq('id', user.id);
+    const { error } = await sb.from('members').update({ display_name: nameVal }).eq('id', user.id);
     if(error) throw error;
-    kuyuKodu = code;
     kisiAdi = nameVal;
-    document.getElementById('groupLabel').textContent = kuyuKodu;
     hideModal();
     toast('✓ Profil güncellendi');
     currentScreen = 'home';
@@ -1273,8 +1379,9 @@ async function addReading(){
   const btn = document.getElementById('saveReadingBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
+    const { data: { user } } = await sb.auth.getUser();
     const { error } = await sb.from('okumalar').insert({
-      kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: null
+      group_id: groupId, user_id: user.id, kuyu_kodu: kuyuKodu, kisi_adi: name, acma_kw: acma, kapatma_kw: null
     });
     if(error) throw error;
     toast('✓ Açma değeri kaydedildi (bekliyor)');
@@ -1363,7 +1470,7 @@ async function confirmSubmitBill(){
   if(modalBtn){ modalBtn.disabled = true; modalBtn.textContent = 'Kaydediliyor…'; }
   try{
     const { error } = await sb.from('donemler').insert({
-      kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw,
+      group_id: groupId, kuyu_kodu: kuyuKodu, toplam_tutar: total, fatura_toplam_kw: billKw,
       dagitim_yontemi: billMethod, fatura_tarihi: billDate
     });
     if(error) throw error;
