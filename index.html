@@ -317,6 +317,7 @@ const APP_URL = "https://flowledgerhq.github.io/flowledger/";
 // a session is confirmed; see initAuth()/afterAuthReady() below.
 let groupId = '';
 let groupName = '';
+let joinCode = '';
 let kisiAdi = '';
 let cache = { okumalar: [], donemler: [] };
 let billMethod = 'oransal';
@@ -450,6 +451,7 @@ async function initAuth(){
     } else if(event === 'SIGNED_OUT'){
       groupId = '';
       groupName = '';
+      joinCode = '';
       kisiAdi = '';
       document.getElementById('signOutBtn').style.display = 'none';
       document.getElementById('editProfileBtn').style.display = 'none';
@@ -470,7 +472,7 @@ async function afterAuthReady(){
   if(!user){ renderAuth(); return; }
   document.getElementById('signOutBtn').style.display = '';
   try{
-    const { data, error } = await sb.from('members').select('*, groups(name)').eq('id', user.id).maybeSingle();
+    const { data, error } = await sb.from('members').select('*, groups(name, join_code)').eq('id', user.id).maybeSingle();
     if(error) throw error;
     if(!data){
       renderProfileSetup();
@@ -487,6 +489,7 @@ async function afterAuthReady(){
     }
     groupId = data.group_id;
     groupName = data.groups ? data.groups.name : '';
+    joinCode = data.groups ? data.groups.join_code : '';
     document.getElementById('groupLabel').textContent = groupName || '—';
     document.getElementById('editProfileBtn').style.display = '';
     loadAll();
@@ -813,6 +816,9 @@ async function submitNewPassword(){
 // Group membership is not editable from this screen. Group membership is
 // only ever set by join_group()/create_group() (DB-enforced via
 // trg_protect_members_group_id); only display_name is editable here.
+// This screen doubles as the one place to look up the group's join_code
+// again later — it's only ever shown once at group-creation time
+// otherwise, and people close that screen or forget the code.
 function openEditProfile(){
   showModal(`
     <h2>Profili Düzenle</h2>
@@ -823,7 +829,28 @@ function openEditProfile(){
     <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Grubunu değiştirmek istiyorsan bu bir sonraki güncellemede eklenecek; şimdilik yalnızca görünen adını güncelleyebilirsin.</p>
     <button class="action primary" id="modalEditProfileBtn" onclick="submitEditProfile()">Kaydet</button>
     <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+    ${groupName ? `
+      <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--line);">
+        <label>Grup</label>
+        <p style="font-size:17px; font-weight:700; margin:0 0 14px;">${escapeHtml(groupName)}</p>
+        <label>Davet Kodu</label>
+        <div style="font-family:var(--font-display); font-size:28px; font-weight:800; letter-spacing:2px; color:var(--well); margin:2px 0 10px;">${escapeHtml(joinCode)}</div>
+        <button class="action ghost" onclick="copyJoinCode()">Kopyala</button>
+        <p style="font-size:13px; color:var(--muted-soft); margin:10px 0 0;">Bu kodu gruba katılacak kişilerle paylaşabilirsin.</p>
+      </div>
+    ` : ''}
   `);
+}
+// Clipboard API isn't guaranteed everywhere (needs a secure context, and
+// some in-app/TWA webviews restrict it) — fails quietly into a plain
+// message with the code instead of breaking the screen.
+async function copyJoinCode(){
+  try{
+    await navigator.clipboard.writeText(joinCode);
+    toast('✓ Davet kodu kopyalandı');
+  }catch(e){
+    toast('Kopyalanamadı — kod: ' + joinCode);
+  }
 }
 async function submitEditProfile(){
   const nameVal = document.getElementById('modalEditName').value.trim().replace(/\s+/g, ' ');
