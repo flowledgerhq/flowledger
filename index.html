@@ -337,6 +337,7 @@ let billMethod = 'oransal';
 // Yalnızca "Okuma Ekle" ekranı açıkken doldurulur (gereksiz tekrar sorgu
 // önlensin diye ekran state'i olarak tutuluyor, global cache değil).
 let manualStartContext = null;
+let isLoadingManualStartContext = false;
 // tracks what's on screen so background refresh doesn't yank the user away.
 // screens: 'home' | 'gecmis' | { name:'sonuc', arg:<periodIndex> } | 'giris' | 'fatura' (last two: paused, no auto-redraw)
 let currentScreen = 'home';
@@ -1272,13 +1273,13 @@ function renderGiris(){
       <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
         Giriş yapan: <b style="color:var(--well)">${escapeHtml(kisiAdi)}</b>
       </p>
-      <div id="meterContinuityInfo"></div>
+      <div id="meterContinuityInfo"><p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Son sayaç kaydı yükleniyor…</p></div>
       <div class="field">
         <label for="pacma">Açma Değeri (kW)</label>
-        <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302" oninput="onMeterStartInput()">
+        <input type="number" id="pacma" inputmode="decimal" placeholder="Yükleniyor…" oninput="onMeterStartInput()" disabled>
       </div>
       <div id="meterDiffWarning"></div>
-      <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
+      <button class="action copper" id="saveReadingBtn" onclick="addReading()" disabled>Yükleniyor…</button>
     </div>
     <div class="card" id="pendingCard" style="display:none;">
       <h2 id="pendingTitle">Bekleyen Girişler</h2>
@@ -1300,6 +1301,12 @@ function renderGiris(){
 // gösteriyor. Ekran kapatılıp yeniden açılmadıkça tekrar sorgulanmıyor
 // (manualStartContext bu ekranın state'i, renderGiris() sıfırlıyor).
 async function loadManualStartContext(){
+  if(isLoadingManualStartContext) return;
+  isLoadingManualStartContext = true;
+  const pacmaEl = document.getElementById('pacma');
+  const saveBtn = document.getElementById('saveReadingBtn');
+  if(pacmaEl) pacmaEl.disabled = true;
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Yükleniyor…'; }
   try{
     const { data, error } = await sb.rpc('get_manual_usage_start_context', { p_group_id: groupId });
     if(error) throw error;
@@ -1312,13 +1319,24 @@ async function loadManualStartContext(){
     // Beklenen değer varsa açma alanını onunla dolduruyoruz — ama
     // readonly değil, kullanıcı fiziksel sayaçta farklı bir değer
     // görüyorsa gerçek değeri girebilmeli.
-    const pacmaEl = document.getElementById('pacma');
-    if(pacmaEl && manualStartContext && manualStartContext.expected_meter_start != null && !pacmaEl.value){
-      pacmaEl.value = manualStartContext.expected_meter_start;
-      onMeterStartInput();
+    const currentInput = document.getElementById('pacma');
+    if(currentInput){
+      currentInput.disabled = false;
+      currentInput.placeholder = 'örn. 2302';
+      if(manualStartContext && manualStartContext.expected_meter_start != null && !currentInput.value){
+        currentInput.value = manualStartContext.expected_meter_start;
+        onMeterStartInput();
+      }
     }
+    const currentBtn = document.getElementById('saveReadingBtn');
+    if(currentBtn){ currentBtn.disabled = false; currentBtn.textContent = 'Kaydet'; }
   }catch(e){
-    // sessizce geç — ekran normal (context'siz) haliyle çalışmaya devam eder
+    const info = document.getElementById('meterContinuityInfo');
+    if(info) info.innerHTML = `<p style="font-size:13px; color:var(--warn); margin:-8px 0 18px;">Son sayaç kaydı yüklenemedi. Kaydetmeden önce tekrar dene.</p>`;
+    const currentBtn = document.getElementById('saveReadingBtn');
+    if(currentBtn){ currentBtn.disabled = false; currentBtn.textContent = 'Tekrar Dene'; currentBtn.onclick = () => loadManualStartContext(); }
+  }finally{
+    isLoadingManualStartContext = false;
   }
 }
 
@@ -1422,6 +1440,7 @@ async function confirmCompleteReading(id){
     await loadAll();
     renderOpenReadingsList();
     renderPendingList();
+    await loadManualStartContext();
   }catch(e){
     toast('Hata oldu, tekrar dene');
     if(btn){ btn.disabled = false; btn.textContent = 'Kaydet'; }
@@ -1493,7 +1512,9 @@ async function addReading(){
     const m = e.message || '';
     toast(m.includes('METER_START_BELOW_PREVIOUS_END')
       ? 'Açma değeri son kapanıştan küçük olamaz. Sayacı tekrar kontrol et.'
-      : 'Hata oldu, tekrar dene');
+      : m.includes('OPEN_USAGE_ALREADY_EXISTS') || m.includes('idx_usage_sessions_one_open_per_group')
+        ? 'Bu kuyu için zaten bekleyen bir kullanım var. Önce onu kapat.'
+        : 'Hata oldu, tekrar dene');
   }finally{
     isSavingReading = false;
   }
