@@ -140,6 +140,20 @@
     box-shadow:var(--shadow);
   }
   .card h2{font-family:var(--font-display); font-size:20px; margin:0 0 16px; font-weight:700;}
+  .reading-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px;}
+  .reading-head h2{margin:0;}
+  .reading-user{font-size:13px; color:var(--muted); white-space:nowrap;}
+  .reading-user b{color:var(--well);}
+  .meter-context{background:var(--paper-warm); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:14px; display:flex; justify-content:space-between; gap:12px; align-items:center;}
+  .meter-context .mc-label{font-size:12px; color:var(--muted);}
+  .meter-context .mc-value{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .meter-context .mc-meta{font-size:12px; color:var(--muted-soft); text-align:right;}
+  .pending-focus{border-color:var(--copper);}
+  .pending-focus h2{margin-bottom:6px;}
+  .pending-hint{font-size:13px; color:var(--muted-soft); margin:0 0 12px;}
+  .pending-row{display:flex; justify-content:space-between; align-items:center; gap:14px;}
+  .pending-meter{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .pending-meta{font-size:13px; color:var(--muted-soft); margin-top:2px;}
 
   label{display:block; font-size:16px; font-weight:700; margin-bottom:8px; color:var(--well);}
   input[type=text], input[type=number], input[type=password], input[type=email]{
@@ -1273,12 +1287,12 @@ function renderGiris(){
 
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
-    <div class="card">
-      <h2>Okuma Ekle</h2>
-      <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
-        Giriş yapan: <b style="color:var(--well)">${escapeHtml(kisiAdi)}</b>
-      </p>
-      <div id="meterContinuityInfo"><p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Son sayaç kaydı yükleniyor…</p></div>
+    <div class="card" id="newReadingCard">
+      <div class="reading-head">
+        <h2>Okuma Ekle</h2>
+        <div class="reading-user">Giriş yapan: <b>${escapeHtml(kisiAdi)}</b></div>
+      </div>
+      <div id="meterContinuityInfo"><div class="meter-context"><div><div class="mc-label">Son sayaç</div><div class="mc-value">Yükleniyor…</div></div></div></div>
       <div class="field">
         <label for="pacma">Açma Değeri (kW)</label>
         <input type="number" id="pacma" inputmode="decimal" placeholder="Yükleniyor…" oninput="onMeterStartInput()" disabled>
@@ -1286,9 +1300,9 @@ function renderGiris(){
       <div id="meterDiffWarning"></div>
       <button class="action copper" id="saveReadingBtn" onclick="addReading()" disabled>Yükleniyor…</button>
     </div>
-    <div class="card" id="pendingCard" style="display:none;">
-      <h2 id="pendingTitle">Bekleyen Girişler</h2>
-      <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 14px;">Açma değeri girilmiş, kapatma değeri henüz girilmemiş kayıtlar. "Kapat" butonuyla tamamlanınca aşağıdaki listeye taşınır.</p>
+    <div class="card pending-focus" id="pendingCard" style="display:none;">
+      <h2 id="pendingTitle">Açık Kullanım</h2>
+      <p class="pending-hint">Pompa kullanımda. İşin bittiğinde kapanış sayaç değerini gir.</p>
       <div id="pendingList"></div>
     </div>
     <div class="card">
@@ -1357,15 +1371,14 @@ function renderMeterContinuityInfo(){
   const el = document.getElementById('meterContinuityInfo');
   if(!el) return;
   if(!manualStartContext){
-    el.innerHTML = `<p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Bu grup için ilk sayaç kaydı. Panodaki mevcut değeri gir.</p>`;
+    el.innerHTML = `<div class="meter-context"><div><div class="mc-label">Son sayaç</div><div class="mc-value">İlk kayıt</div></div><div class="mc-meta">Panodaki mevcut değeri gir</div></div>`;
     return;
   }
   const ctx = manualStartContext;
   el.innerHTML = `
-    <div style="background:var(--paper-warm); border:2px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:16px;">
-      <div style="font-size:13px; color:var(--muted); margin-bottom:2px;">Son kayıt</div>
-      <div style="font-size:15px; font-weight:700;">${escapeHtml(personName(ctx.previous_user_id))} · ${formatDateTime(ctx.previous_ended_at)}</div>
-      <div style="font-size:14px; color:var(--muted); margin-top:2px;">Kapanış: ${ctx.expected_meter_start} kW</div>
+    <div class="meter-context">
+      <div><div class="mc-label">Son kapanış</div><div class="mc-value">${ctx.expected_meter_start} kW</div></div>
+      <div class="mc-meta">${escapeHtml(personName(ctx.previous_user_id))}<br>${formatDateTime(ctx.previous_ended_at)}</div>
     </div>
   `;
 }
@@ -1405,17 +1418,19 @@ function renderPendingList(){
   if(!cardEl || !titleEl || !listEl) return; // screen isn't showing right now
   const pending = pendingUsageSessions().slice().sort((a,b) => new Date(b.started_at) - new Date(a.started_at));
   cardEl.style.display = pending.length === 0 ? 'none' : '';
-  titleEl.textContent = `Bekleyen Girişler (${pending.length})`;
+  titleEl.textContent = pending.length === 1 ? 'Açık Kullanım' : `Açık Kullanımlar (${pending.length})`;
   listEl.innerHTML = pending.map(r => `
-    <div class="entry-row">
+    <div class="pending-row">
       <div>
-        <div class="ename">${escapeHtml(personName(r.user_id))}</div>
-        <div class="edate">${formatDateTime(r.started_at)} · Açma: ${r.meter_start} kW</div>
+        <div class="pending-meter">${r.meter_start} kW</div>
+        <div class="pending-meta">${escapeHtml(personName(r.user_id))} · ${formatDateTime(r.started_at)}</div>
         ${meterGapNote(r.meter_gap)}
       </div>
-      <button class="action copper" style="width:auto; padding:8px 16px; font-size:14px;" onclick="completeReading('${r.id}')">Kapat</button>
+      <button class="action copper" style="width:auto; padding:12px 20px; font-size:16px;" onclick="completeReading('${r.id}')">Kapat</button>
     </div>
   `).join('');
+  const newCard = document.getElementById('newReadingCard');
+  if(newCard) newCard.style.display = pending.length > 0 ? 'none' : '';
 }
 
 function completeReading(id){
