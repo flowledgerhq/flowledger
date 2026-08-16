@@ -822,6 +822,11 @@ async function submitNewPassword(){
 // again later — it's only ever shown once at group-creation time
 // otherwise, and people close that screen or forget the code.
 function openEditProfile(){
+  // Pushes a history entry so the hardware/gesture back button closes
+  // this modal and returns to the underlying screen, instead of falling
+  // through to the browser/TWA's own history (which, with nothing else
+  // pushed past 'home', would exit the app entirely).
+  history.pushState({modal:'editProfile'}, '', location.hash || location.pathname);
   showModal(`
     <h2>Profili Düzenle</h2>
     <div class="field">
@@ -830,7 +835,7 @@ function openEditProfile(){
     </div>
     <p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Grubunu değiştirmek istiyorsan bu bir sonraki güncellemede eklenecek; şimdilik yalnızca görünen adını güncelleyebilirsin.</p>
     <button class="action primary" id="modalEditProfileBtn" onclick="submitEditProfile()">Kaydet</button>
-    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
+    <button class="action ghost" style="margin-top:10px;" onclick="closeEditProfileModal()">Vazgeç</button>
     ${groupName ? `
       <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--line);">
         <label>Grup</label>
@@ -842,6 +847,14 @@ function openEditProfile(){
       </div>
     ` : ''}
   `);
+}
+// Cancel path pops the history entry pushed in openEditProfile() instead
+// of hiding the modal directly — that way the pushed entry doesn't linger
+// (which would otherwise make a *later* hardware back press do nothing
+// visible before the real navigation happens). The popstate listener
+// below hides the modal once this actually navigates back.
+function closeEditProfileModal(){
+  history.back();
 }
 // Clipboard API isn't guaranteed everywhere (needs a secure context, and
 // some in-app/TWA webviews restrict it) — fails quietly into a plain
@@ -868,6 +881,9 @@ async function submitEditProfile(){
     hideModal();
     toast('✓ Profil güncellendi');
     currentScreen = 'home';
+    // Replaces the pushed 'editProfile' modal history entry directly with
+    // 'home', rather than popping it with history.back() — keeps the
+    // history stack the same depth either way, no dangling entry left.
     history.replaceState({screen:'home'}, '', location.pathname);
     loadAll();
   }catch(e){
@@ -1584,6 +1600,14 @@ function goGecmis(){ history.pushState({screen:'gecmis'}, '', '#gecmis'); render
 function goSonuc(idx){ history.pushState({screen:'sonuc', arg:idx}, '', '#sonuc-'+idx); renderSonuc(idx); }
 
 window.addEventListener('popstate', (e) => {
+  // Always hide the modal on any back/forward navigation first — this is
+  // what makes the back button close the profile modal instead of
+  // falling through to the app's own exit (see openEditProfile()). Safe
+  // no-op if no modal happens to be open. e.state here is always the
+  // *underlying* screen's state (whatever was current before the modal's
+  // entry was pushed), never the modal's own state, so the switch below
+  // renders that screen normally.
+  hideModal();
   const state = e.state || {screen:'home'};
   if(state.screen === 'giris') renderGiris();
   else if(state.screen === 'fatura') renderFatura();
