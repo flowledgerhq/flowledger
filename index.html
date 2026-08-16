@@ -1589,7 +1589,11 @@ async function confirmSubmitBill(){
     if(period) goSonuc(period.id);
     else goGecmis();
   }catch(e){
-    toast('Hata oldu, tekrar dene');
+    if(e && typeof e.message === 'string' && e.message.includes('OPEN_USAGE_CROSSES_BILLING_CUTOFF')){
+      toast('Bu fatura dönemine ait devam eden bir sulama var. Önce kullanımın kapanış değerini gir.');
+    }else{
+      toast('Hata oldu, tekrar dene');
+    }
     if(modalBtn){ modalBtn.disabled = false; modalBtn.textContent = 'Evet, Dönemi Kapat'; }
   }finally{
     isSavingBill = false;
