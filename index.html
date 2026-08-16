@@ -321,7 +321,15 @@ let groupId = '';
 let groupName = '';
 let joinCode = '';
 let kisiAdi = '';
-let cache = { okumalar: [], donemler: [] };
+let myUserId = '';
+// usage_sessions: backend v1'in merkez tablosu (eski "okumalar"ın yerine).
+// billing_periods + allocations: eski "donemler"in yerine — paylaşım
+// hesaplaması artık backend'de (create_billing_period RPC) yapılıp
+// allocations'a snapshot olarak yazılıyor; frontend bir daha hesaplamıyor.
+let cache = { usageSessions: [], billingPeriods: [] };
+// user_id -> display_name eşlemesi; usage_sessions/allocations kayıtları
+// artık isim değil user_id taşıyor, isimler profiles'tan ayrıca çekiliyor.
+let profilesCache = {};
 let billMethod = 'oransal';
 // tracks what's on screen so background refresh doesn't yank the user away.
 // screens: 'home' | 'gecmis' | { name:'sonuc', arg:<periodIndex> } | 'giris' | 'fatura' (last two: paused, no auto-redraw)
@@ -366,18 +374,6 @@ function todayDateStr(){
   const day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-// Groups people correctly even if the name was typed with different
-// capitalization or stray spaces across entries (e.g. "ahmet " vs "Ahmet").
-function nameKey(name){
-  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
-}
-function displayName(name){
-  return name.trim().replace(/\s+/g, ' ')
-    .toLocaleLowerCase('tr-TR')
-    .split(' ')
-    .map(w => w ? w.charAt(0).toLocaleUpperCase('tr-TR') + w.slice(1) : w)
-    .join(' ');
-}
 
 // ---- Dark mode ----
 // The 'dark' class itself is applied instantly by a tiny inline script at
@@ -407,14 +403,15 @@ async function loadAll(isBackgroundRefresh){
     return;
   }
   try{
-    const [okumalarRes, donemlerRes] = await Promise.all([
-      sb.from('okumalar').select('*').eq('group_id', groupId).order('created_at', {ascending:true}),
-      sb.from('donemler').select('*').eq('group_id', groupId).order('created_at', {ascending:true})
+    const [usageRes, billingRes] = await Promise.all([
+      sb.from('usage_sessions').select('*').eq('group_id', groupId).order('started_at', {ascending:true}),
+      sb.from('billing_periods').select('*').eq('group_id', groupId).order('bill_date', {ascending:true})
     ]);
-    if(okumalarRes.error) throw okumalarRes.error;
-    if(donemlerRes.error) throw donemlerRes.error;
-    cache.okumalar = okumalarRes.data || [];
-    cache.donemler = donemlerRes.data || [];
+    if(usageRes.error) throw usageRes.error;
+    if(billingRes.error) throw billingRes.error;
+    cache.usageSessions = usageRes.data || [];
+    cache.billingPeriods = billingRes.data || [];
+    await ensureProfilesLoaded(cache.usageSessions.map(s => s.user_id));
     redrawCurrentScreen();
   }catch(e){
     if(!isBackgroundRefresh){
@@ -422,6 +419,23 @@ async function loadAll(isBackgroundRefresh){
     }
     // on a background refresh failure, just leave the current screen as-is
   }
+}
+
+// usage_sessions/allocations artık isim değil user_id taşıyor (bkz. backend
+// v1: display_name kimlik/yetkilendirme amacıyla kullanılmıyor). İsimleri
+// göstermek için ayrıca profiles'tan çekip yerel bir haritada tutuyoruz.
+// profiles RLS'i "aynı grubu paylaşan kullanıcılar birbirini görebilir"
+// şeklinde (bkz. profiles_select_groupmates policy) — bu yüzden burada
+// grup dışı bir kullanıcı sızıntısı olmaz.
+async function ensureProfilesLoaded(userIds){
+  const missing = [...new Set(userIds)].filter(id => id && !profilesCache[id]);
+  if(missing.length === 0) return;
+  const { data, error } = await sb.from('profiles').select('id, display_name').in('id', missing);
+  if(error || !data) return;
+  data.forEach(p => { profilesCache[p.id] = p.display_name; });
+}
+function personName(userId){
+  return profilesCache[userId] || '—';
 }
 
 function redrawCurrentScreen(){
@@ -466,32 +480,43 @@ async function initAuth(){
 
 // Called whenever a live session is confirmed (fresh sign-in, or an
 // already-open session found on load). Looks up this account's row in
-// `members`; if it doesn't exist yet (first login right after email
+// `profiles`; if it doesn't exist yet (first login right after email
 // confirmation, or a signup that never finished), sends the person to
 // complete their profile once instead of assuming defaults.
 async function afterAuthReady(){
   const { data: { user } } = await sb.auth.getUser();
   if(!user){ renderAuth(); return; }
+  myUserId = user.id;
   document.getElementById('signOutBtn').style.display = '';
   try{
-    const { data, error } = await sb.from('members').select('*, groups(name, join_code)').eq('id', user.id).maybeSingle();
-    if(error) throw error;
-    if(!data){
+    const { data: profile, error: profErr } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    if(profErr) throw profErr;
+    if(!profile){
       renderProfileSetup();
       return;
     }
-    kisiAdi = data.display_name;
-    if(!data.group_id){
-      // Name is set but no group yet (fresh profile, or an account that
-      // never finished joining/creating a group) — group_id can only be
-      // set via join_group()/create_group(), never directly, so this is
-      // the only path back to a working group membership.
+    kisiAdi = profile.display_name;
+    profilesCache[user.id] = profile.display_name;
+
+    // Backend çoklu grup üyeliğini destekliyor (group_memberships), ama
+    // frontend bugün hâlâ tek "aktif grup" deneyimi gösteriyor — en son
+    // katılınan aktif üyelik seçiliyor. group_id artık hiçbir tabloda
+    // doğrudan client tarafından yazılabilen bir alan değil; yalnızca
+    // create_group()/join_group() RPC'leri üzerinden değişir.
+    const { data: memberships, error: memErr } = await sb
+      .from('group_memberships')
+      .select('group_id, joined_at, groups(name, join_code)')
+      .eq('user_id', user.id).eq('status', 'active')
+      .order('joined_at', { ascending: false }).limit(1);
+    if(memErr) throw memErr;
+    const active = memberships && memberships[0];
+    if(!active){
       renderGroupChoice();
       return;
     }
-    groupId = data.group_id;
-    groupName = data.groups ? data.groups.name : '';
-    joinCode = data.groups ? data.groups.join_code : '';
+    groupId = active.group_id;
+    groupName = active.groups ? active.groups.name : '';
+    joinCode = active.groups ? active.groups.join_code : '';
     document.getElementById('groupLabel').textContent = groupName || '—';
     document.getElementById('editProfileBtn').style.display = '';
     loadAll();
@@ -600,11 +625,11 @@ async function submitProfileSetup(){
   const btn = document.getElementById('profSubmitBtn');
   btn.disabled = true; btn.textContent = 'Kaydediliyor…';
   try{
-    // group_id is intentionally left unset here — it can only be set by
-    // the join_group()/create_group() RPCs (enforced DB-side by
-    // trg_protect_members_group_id), never written directly by the
-    // client. Group membership is chosen on the next screen.
-    const { error } = await sb.from('members').insert({ id: user.id, display_name: nameVal });
+    // group membership is intentionally not set here — it only ever
+    // exists via the create_group()/join_group() RPCs (group_memberships
+    // rows are RPC-only, never written directly by the client). Group
+    // membership is chosen on the next screen.
+    const { error } = await sb.from('profiles').insert({ id: user.id, display_name: nameVal });
     if(error) throw error;
     kisiAdi = nameVal;
     renderGroupChoice();
@@ -616,10 +641,10 @@ async function submitProfileSetup(){
 
 // ---- Group membership (create/join) ----
 // Shown after profile setup (name only, no group yet) or whenever a
-// signed-in account's members row has no group_id. Group membership is
-// only ever set via the create_group()/join_group() RPCs, never written
-// directly by the client (enforced DB-side by
-// trg_protect_members_group_id).
+// signed-in account has no active group_memberships row. Group membership
+// is only ever set via the create_group()/join_group() RPCs — authenticated
+// clients have no INSERT/UPDATE grant on group_memberships at all (see
+// backend_v1/03_rls.sql), so there's no direct write path to guard against.
 function renderGroupChoice(){
   document.getElementById('groupLabel').textContent = '—';
   document.getElementById('mainArea').innerHTML = `
@@ -816,8 +841,10 @@ async function submitNewPassword(){
 
 // ---- Profile editing ----
 // Group membership is not editable from this screen. Group membership is
-// only ever set by join_group()/create_group() (DB-enforced via
-// trg_protect_members_group_id); only display_name is editable here.
+// only ever set by join_group()/create_group() — authenticated clients
+// have no direct write grant on group_memberships (see
+// backend_v1/03_rls.sql); only display_name (profiles table) is editable
+// here.
 // This screen doubles as the one place to look up the group's join_code
 // again later — it's only ever shown once at group-creation time
 // otherwise, and people close that screen or forget the code.
@@ -875,9 +902,10 @@ async function submitEditProfile(){
   const btn = document.getElementById('modalEditProfileBtn');
   btn.disabled = true; btn.textContent = 'Kaydediliyor…';
   try{
-    const { error } = await sb.from('members').update({ display_name: nameVal }).eq('id', user.id);
+    const { error } = await sb.from('profiles').update({ display_name: nameVal, updated_at: new Date().toISOString() }).eq('id', user.id);
     if(error) throw error;
     kisiAdi = nameVal;
+    profilesCache[user.id] = nameVal;
     hideModal();
     toast('✓ Profil güncellendi');
     currentScreen = 'home';
@@ -892,89 +920,35 @@ async function submitEditProfile(){
   }
 }
 
-// ---- Period computation ----
-// Returns the timestamp that should be used to place a reading into a
-// period. For a completed reading whose kapatma was filled in later (not
-// at the same time as açma), we use the completion moment rather than the
-// açma moment — the usage number wasn't actually known until then, so it
-// couldn't have been counted in a bill closed before that point.
-function readingEffectiveTimestamp(o){
-  return o.tamamlanma_tarihi || o.created_at;
+// ---- Usage session grouping ----
+// Backend v1: paylaşım hesaplaması (fark uzlaştırması dahil) artık
+// create_billing_period() RPC'sinde yapılıp allocations tablosuna snapshot
+// olarak yazılıyor (bkz. backend_v1/06_fixups.sql). Frontend bir daha bu
+// hesaplamayı yapmıyor — yalnızca "hangi kullanımlar henüz faturalanmadı"
+// diye gruplandırıyor, RPC'nin kullandığı aynı pencere mantığıyla
+// (bir önceki faturanın bill_date'inin gün sonu -> şimdi).
+function latestBillDate(){
+  if(cache.billingPeriods.length === 0) return null;
+  return cache.billingPeriods[cache.billingPeriods.length-1].bill_date;
 }
-function computePeriods(){
-  const donemler = cache.donemler;
-  // Pending readings (kapatma not filled in yet) have no usable kW figure
-  // and can't belong to any period — they're shown separately until
-  // completed, so they're excluded here entirely.
-  const okumalar = cache.okumalar.filter(o => o.kapatma_kw !== null && o.kapatma_kw !== undefined);
-  const periods = [];
-  let cursor = null;
-  donemler.forEach((d, idx) => {
-    // Cut off by the bill's real-world date (fatura_tarihi), not by when it
-    // happened to be typed into the app (created_at). This matters when a
-    // bill is entered several days late — readings from irrigation that
-    // happened AFTER the real bill date but BEFORE it was entered must not
-    // be swept into this period.
-    const cutoff = billCutoffTimestamp(d);
-    const readings = okumalar.filter(o => (cursor === null || readingEffectiveTimestamp(o) > cursor) && readingEffectiveTimestamp(o) <= cutoff);
-    periods.push({ donem: d, readings, closed: true, index: idx+1 });
-    cursor = cutoff;
-  });
-  const openReadings = okumalar.filter(o => cursor === null || readingEffectiveTimestamp(o) > cursor);
-  periods.push({ donem: null, readings: openReadings, closed: false, index: donemler.length+1 });
-  return periods;
+function openWindowCutoffIso(){
+  const d = latestBillDate();
+  if(!d) return null;
+  return new Date(d + 'T23:59:59.999').toISOString();
 }
-// Returns the ISO timestamp that should act as this bill's period boundary.
-// fatura_tarihi is DB-enforced NOT NULL (see Faz 1 hardening), so this
-// always has a real user-entered date to work with.
-function billCutoffTimestamp(d){
-  const dateOnly = new Date(d.fatura_tarihi + 'T23:59:59.999').toISOString();
-  // Never let the boundary extend past the moment the bill was actually
-  // submitted. Normally fatura_tarihi is EARLIER than created_at (bill
-  // entered a few days late), so the end-of-day cutoff correctly trims
-  // out readings typed between the real bill date and the late entry.
-  // But when a bill is closed the same day it's dated (the common case),
-  // end-of-day is LATER than created_at — using it as-is would sweep up
-  // any reading added right after closing, instead of starting the new
-  // open period. Taking the earlier of the two fixes both cases.
-  return dateOnly < d.created_at ? dateOnly : d.created_at;
+function usageEffectiveTimestamp(s){
+  return s.ended_at || s.started_at;
 }
-function groupByPerson(readings){
-  const map = {};
-  readings.forEach(r => {
-    const key = nameKey(r.kisi_adi);
-    if(!map[key]) map[key] = { name: displayName(r.kisi_adi), total: 0, count: 0 };
-    map[key].total += (r.kapatma_kw - r.acma_kw);
-    map[key].count += 1;
-  });
-  return Object.values(map);
+// Tamamlanmış ama henüz hiçbir faturaya dahil edilmemiş oturumlar.
+function openUsageSessions(){
+  const cutoff = openWindowCutoffIso();
+  return cache.usageSessions.filter(s =>
+    s.status === 'completed' && (cutoff === null || usageEffectiveTimestamp(s) > cutoff)
+  );
 }
-function calcPeriodResult(period){
-  const groups = groupByPerson(period.readings);
-  const kayitliToplam = groups.reduce((s,g)=>s+g.total,0);
-  let fark = 0;
-  const billKw = period.donem ? period.donem.fatura_toplam_kw : null;
-  if(billKw != null && kayitliToplam > 0) fark = billKw - kayitliToplam;
-
-  let rows = groups.map(g => ({ name: g.name, orijinal: g.total }));
-  const method = period.donem ? period.donem.dagitim_yontemi : 'oransal';
-  if(fark !== 0 && billKw != null){
-    if(method === 'esit'){
-      const pay = fark / (rows.length || 1);
-      rows = rows.map(r => ({...r, farkPayi: pay, yeniToplam: r.orijinal + pay}));
-    } else {
-      rows = rows.map(r => ({...r, farkPayi: kayitliToplam>0 ? fark*(r.orijinal/kayitliToplam) : 0}));
-      rows = rows.map(r => ({...r, yeniToplam: r.orijinal + r.farkPayi}));
-    }
-  } else {
-    rows = rows.map(r => ({...r, farkPayi:0, yeniToplam:r.orijinal}));
-  }
-  const nihaiToplam = rows.reduce((s,r)=>s+r.yeniToplam,0);
-  rows = rows.map(r => ({...r, oran: nihaiToplam>0 ? (r.yeniToplam/nihaiToplam)*100 : 0}));
-  if(period.donem){
-    rows = rows.map(r => ({...r, tutar: period.donem.toplam_tutar * (r.oran/100)}));
-  }
-  return { rows, kayitliToplam, fark, nihaiToplam, showFark: fark !== 0 && billKw != null };
+// Henüz kapatılmamış (açma girilmiş, kapatma bekleyen) oturumlar.
+function pendingUsageSessions(){
+  return cache.usageSessions.filter(s => s.status === 'active' || s.status === 'armed');
 }
 
 // ---- Weather ----
@@ -1248,9 +1222,8 @@ function goHava(){ history.pushState({screen:'hava'}, '', '#hava'); renderHava()
 // ---- Screens ----
 function renderHome(){
   currentScreen = 'home';
-  const periods = computePeriods();
-  const openPeriod = periods[periods.length-1];
-  const hasHistory = periods.length > 1;
+  const openCount = openUsageSessions().length;
+  const billedCount = cache.billingPeriods.length;
 
   document.getElementById('mainArea').innerHTML = `
     <button class="big-btn" id="weatherChip" style="display:none;">
@@ -1268,13 +1241,13 @@ function renderHome(){
     <button class="big-btn" onclick="goFatura()">
       <div class="icon well">🧾</div>
       <div>Fatura Gir
-        <div class="sub">${openPeriod.readings.length} okuma bekliyor · dönemi kapat</div>
+        <div class="sub">${openCount} okuma bekliyor · dönemi kapat</div>
       </div>
     </button>
     <button class="big-btn" onclick="goGecmis()">
       <div class="icon well">📋</div>
       <div>Geçmiş Faturalar
-        <div class="sub">${hasHistory ? (periods.length-1) + ' kapanmış dönem' : 'Henüz kapanmış dönem yok'}</div>
+        <div class="sub">${billedCount > 0 ? billedCount + ' kapanmış dönem' : 'Henüz kapanmış dönem yok'}</div>
       </div>
     </button>
     <p class="signature">Kazım Süngü tarafından yapıldı</p>
@@ -1312,26 +1285,24 @@ function renderGiris(){
   renderPendingList();
 }
 
-// Entries with kapatma_kw not yet filled in. Shown separately so an açma
-// value stays visibly "parked" under the person's name until someone
-// (same device or a different one) comes back and fills in the kapatma
-// value — at which point it's completed and moves into the regular list.
+// Sessions whose meter_end isn't filled in yet (status active/armed).
+// Shown separately so an açma value stays visibly "parked" under the
+// person's name until someone (same device or a different one) comes
+// back and fills in the kapatma value — at which point it's completed via
+// complete_usage() and moves into the regular list.
 function renderPendingList(){
   const cardEl = document.getElementById('pendingCard');
   const titleEl = document.getElementById('pendingTitle');
   const listEl = document.getElementById('pendingList');
   if(!cardEl || !titleEl || !listEl) return; // screen isn't showing right now
-  const pending = cache.okumalar
-    .filter(o => o.group_id === groupId && (o.kapatma_kw === null || o.kapatma_kw === undefined))
-    .slice()
-    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const pending = pendingUsageSessions().slice().sort((a,b) => new Date(b.started_at) - new Date(a.started_at));
   cardEl.style.display = pending.length === 0 ? 'none' : '';
   titleEl.textContent = `Bekleyen Girişler (${pending.length})`;
   listEl.innerHTML = pending.map(r => `
     <div class="entry-row">
       <div>
-        <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
-        <div class="edate">${formatDateTime(r.created_at)} · Açma: ${r.acma_kw} kW</div>
+        <div class="ename">${escapeHtml(personName(r.user_id))}</div>
+        <div class="edate">${formatDateTime(r.started_at)} · Açma: ${r.meter_start} kW</div>
       </div>
       <button class="action copper" style="width:auto; padding:8px 16px; font-size:14px;" onclick="completeReading('${r.id}')">Kapat</button>
     </div>
@@ -1339,11 +1310,11 @@ function renderPendingList(){
 }
 
 function completeReading(id){
-  const row = cache.okumalar.find(o => o.id === id);
+  const row = cache.usageSessions.find(o => o.id === id);
   if(!row) return;
   showModal(`
     <h2>Kapatma Değeri</h2>
-    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${escapeHtml(displayName(row.kisi_adi))} için (açma: ${row.acma_kw} kW)</p>
+    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${escapeHtml(personName(row.user_id))} için (açma: ${row.meter_start} kW)</p>
     <div class="field">
       <label for="modalKapatma">Kapatma Değeri (kW)</label>
       <input type="number" id="modalKapatma" inputmode="decimal" placeholder="örn. 2350">
@@ -1354,20 +1325,19 @@ function completeReading(id){
   setTimeout(() => { const el = document.getElementById('modalKapatma'); if(el) el.focus(); }, 50);
 }
 async function confirmCompleteReading(id){
-  const row = cache.okumalar.find(o => o.id === id);
+  const row = cache.usageSessions.find(o => o.id === id);
   if(!row) return;
   const val = document.getElementById('modalKapatma').value;
   const kapatma = parseFloat(val);
   if(isNaN(kapatma)){ toast('Geçerli bir sayı gir'); return; }
-  if(kapatma < row.acma_kw){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
+  if(kapatma < row.meter_start){ toast('Kapatma değeri, açmadan küçük olamaz'); return; }
   const btn = document.getElementById('modalConfirmBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
-    // complete_usage RPC: server-side aynı RLS+trigger zincirini çalıştırır
-    // (kendi grubun dışına dokunamazsın, tamamlanmış kayıt değişmez,
-    // tamamlanma_tarihi server-side atanır) — ama artık ham tablo
-    // erişimi yerine stabil, tek bir API çağrısı üzerinden.
-    const { error } = await sb.rpc('complete_usage', { p_id: id, p_kapatma_kw: kapatma });
+    // complete_usage RPC: server-side RLS + state-machine trigger zinciri
+    // çalışır (kendi grubun dışına dokunamazsın, tamamlanmış oturum bir
+    // daha değişmez, energy_used ve ended_at server-side hesaplanır).
+    const { error } = await sb.rpc('complete_usage', { p_session_id: id, p_meter_end: kapatma });
     if(error) throw error;
     hideModal();
     toast('✓ Tamamlandı');
@@ -1389,23 +1359,21 @@ function renderOpenReadingsList(){
   const titleEl = document.getElementById('openReadingsTitle');
   const listEl = document.getElementById('openReadingsList');
   if(!titleEl || !listEl) return; // screen isn't showing right now
-  const periods = computePeriods();
-  const openReadings = periods[periods.length-1].readings.slice().reverse();
+  const openReadings = openUsageSessions().slice().reverse();
   titleEl.textContent = `Bu Döneme Ait Kayıtlar (${openReadings.length})`;
   listEl.innerHTML = openReadings.length === 0 ? '<div class="empty">Henüz kayıt yok.</div>' : openReadings.map(r => `
     <div class="entry-row">
       <div>
-        <div class="ename">${escapeHtml(displayName(r.kisi_adi))}</div>
-        <div class="edate">${formatDateTime(r.created_at)} · ${r.acma_kw} → ${r.kapatma_kw}</div>
+        <div class="ename">${escapeHtml(personName(r.user_id))}</div>
+        <div class="edate">${formatDateTime(r.started_at)} · ${r.meter_start} → ${r.meter_end}</div>
       </div>
-      <div class="ediff">${(r.kapatma_kw - r.acma_kw).toFixed(1)} kW</div>
+      <div class="ediff">${Number(r.energy_used).toFixed(1)} kW</div>
     </div>
   `).join('');
 }
 
 async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
-  const name = kisiAdi;
   const acma = parseFloat(document.getElementById('pacma').value);
   if(isNaN(acma)){ toast('Açma değerini gir'); return; }
 
@@ -1413,10 +1381,10 @@ async function addReading(){
   const btn = document.getElementById('saveReadingBtn');
   if(btn){ btn.disabled = true; btn.textContent = 'Kaydediliyor…'; }
   try{
-    const { data: { user } } = await sb.auth.getUser();
-    const { error } = await sb.from('okumalar').insert({
-      group_id: groupId, user_id: user.id, kisi_adi: name, acma_kw: acma, kapatma_kw: null
-    });
+    // start_manual_usage RPC: group_id/user_id/created_at gibi güvenilir
+    // değerleri backend kendi belirliyor (auth.uid() + aktif üyelik
+    // kontrolü) — frontend artık okumalar tablosuna doğrudan yazmıyor.
+    const { error } = await sb.rpc('start_manual_usage', { p_group_id: groupId, p_meter_start: acma });
     if(error) throw error;
     toast('✓ Açma değeri kaydedildi (bekliyor)');
     await loadAll();
@@ -1430,11 +1398,10 @@ async function addReading(){
 
 function renderFatura(){
   currentScreen = 'fatura';
-  const periods = computePeriods();
-  const openPeriod = periods[periods.length-1];
-  const result = calcPeriodResult(openPeriod);
+  const openReadings = openUsageSessions();
+  const kayitliToplam = openReadings.reduce((s,r) => s + Number(r.energy_used || 0), 0);
 
-  if(openPeriod.readings.length === 0){
+  if(openReadings.length === 0){
     document.getElementById('mainArea').innerHTML = `
       <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
       <div class="card">
@@ -1450,7 +1417,7 @@ function renderFatura(){
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Fatura Gir</h2>
-      <p style="font-size:15px; color:var(--muted); margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${result.kayitliToplam.toFixed(1)} kW</b></p>
+      <p style="font-size:15px; color:var(--muted); margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${kayitliToplam.toFixed(1)} kW</b></p>
       <div class="field">
         <label for="billDate">Fatura Tarihi</label>
         <input type="date" id="billDate" value="${todayDateStr()}">
@@ -1503,15 +1470,21 @@ async function confirmSubmitBill(){
   const modalBtn = document.getElementById('modalConfirmBillBtn');
   if(modalBtn){ modalBtn.disabled = true; modalBtn.textContent = 'Kaydediliyor…'; }
   try{
-    const { error } = await sb.from('donemler').insert({
-      group_id: groupId, toplam_tutar: total, fatura_toplam_kw: billKw,
-      dagitim_yontemi: billMethod, fatura_tarihi: billDate
+    // create_billing_period RPC: paylaşım hesaplaması (fark uzlaştırması
+    // dahil) artık server-side yapılıp allocations'a snapshot olarak
+    // yazılıyor — frontend bir daha bu hesabı yapmıyor, yalnızca sonucu
+    // gösteriyor (bkz. renderSonuc).
+    const { data, error } = await sb.rpc('create_billing_period', {
+      p_group_id: groupId, p_bill_date: billDate, p_total_amount: total,
+      p_bill_energy: billKw, p_allocation_method: billMethod
     });
     if(error) throw error;
+    const period = data && data[0];
     hideModal();
     toast('✓ Dönem kapatıldı');
     await loadAll();
-    goSonuc(computePeriods().filter(p=>p.closed).length - 1);
+    if(period) goSonuc(period.id);
+    else goGecmis();
   }catch(e){
     toast('Hata oldu, tekrar dene');
     if(modalBtn){ modalBtn.disabled = false; modalBtn.textContent = 'Evet, Dönemi Kapat'; }
@@ -1522,7 +1495,7 @@ async function confirmSubmitBill(){
 
 function renderGecmis(){
   currentScreen = 'gecmis';
-  const periods = computePeriods().filter(p => p.closed).reverse();
+  const periods = cache.billingPeriods.slice().reverse();
   if(periods.length === 0){
     document.getElementById('mainArea').innerHTML = `
       <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
@@ -1532,14 +1505,14 @@ function renderGecmis(){
   }
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
-    ${periods.map(p => {
-      const date = new Date(billCutoffTimestamp(p.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
+    ${periods.map((p, i) => {
+      const date = new Date(p.bill_date + 'T12:00:00').toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'});
       return `
-        <div class="period-item" onclick="goSonuc(${p.index-1})">
-          <div class="pnum">${String(p.index).padStart(2,'0')}</div>
+        <div class="period-item" onclick="goSonuc('${p.id}')">
+          <div class="pnum">${String(periods.length-i).padStart(2,'0')}</div>
           <div class="pbody">
             <div class="pdate">${date}</div>
-            <div class="ptotal">${money(p.donem.toplam_tutar)}</div>
+            <div class="ptotal">${money(Number(p.total_amount))}</div>
           </div>
         </div>
       `;
@@ -1547,42 +1520,59 @@ function renderGecmis(){
   `;
 }
 
-function renderSonuc(periodIndexZeroBased){
-  currentScreen = { name: 'sonuc', arg: periodIndexZeroBased };
-  const periods = computePeriods();
-  const period = periods[periodIndexZeroBased];
-  const result = calcPeriodResult(period);
-  const date = period.donem ? new Date(billCutoffTimestamp(period.donem)).toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'}) : null;
-
-  let farkHtml = '';
-  if(result.showFark){
-    farkHtml = `<div class="alert-box">Kayıtlı toplam ${result.kayitliToplam.toFixed(1)} kW idi, faturada ${period.donem.fatura_toplam_kw} kW görünüyor. ${result.fark>0?'+':''}${result.fark.toFixed(1)} kW fark, seçilen yönteme göre paylaştırıldı.</div>`;
-  }
-
-  const grandTotal = result.rows.reduce((s,r)=>s+(r.tutar||0),0);
-
-  document.getElementById('mainArea').innerHTML = `
+// Faturanın kesinleşmiş sonucu — allocations tablosundan (backend
+// tarafından bir kere hesaplanıp snapshot'lanmış), client-side yeniden
+// hesaplama YOK. Aynı fatura ileride tekrar açılsa bile bu ekranda hep
+// aynı rakamlar görünür (bkz. backend_v1: allocations immutable).
+async function renderSonuc(billingPeriodId){
+  currentScreen = { name: 'sonuc', arg: billingPeriodId };
+  const mainArea = document.getElementById('mainArea');
+  mainArea.innerHTML = `
     <button class="back-btn" onclick="history.back()">‹ Geçmiş</button>
-    <div class="card">
-      <h2>${date ? date + ' Faturası' : 'Bu Dönem'}</h2>
-      ${farkHtml}
-      ${result.rows.length === 0 ? '<div class="empty">Bu dönemde kayıt yok.</div>' : result.rows.map(r => `
-        <div class="person-card">
-          <p class="pname">${escapeHtml(r.name)}</p>
-          <p class="pkw">${r.yeniToplam.toFixed(1)} kW kullandı · %${r.oran.toFixed(0)} pay</p>
-          ${r.tutar !== undefined ? `
-            <div class="ptutar"><span class="lbl">Ödeyecek</span>${money(r.tutar)}</div>
-          ` : ''}
-        </div>
-      `).join('')}
-      ${period.donem ? `
-        <div class="grand-total">
-          <div class="lbl">Toplam Fatura</div>
-          <div class="amt">${money(period.donem.toplam_tutar)}</div>
-        </div>
-      ` : ''}
-    </div>
+    <div class="card"><div class="empty">Yükleniyor…</div></div>
   `;
+  try{
+    const period = cache.billingPeriods.find(p => p.id === billingPeriodId)
+      || (await sb.from('billing_periods').select('*').eq('id', billingPeriodId).maybeSingle()).data;
+    const { data: allocations, error } = await sb.from('allocations').select('*').eq('billing_period_id', billingPeriodId).order('amount', {ascending:false});
+    if(error) throw error;
+    await ensureProfilesLoaded((allocations||[]).map(a => a.user_id));
+
+    const date = period ? new Date(period.bill_date + 'T12:00:00').toLocaleDateString('tr-TR', {day:'2-digit', month:'long', year:'numeric'}) : null;
+    const kayitliToplam = (allocations||[]).reduce((s,a)=>s+Number(a.usage_energy),0);
+    let farkHtml = '';
+    if(period && period.bill_energy != null && kayitliToplam > 0 && Math.abs(Number(period.bill_energy) - kayitliToplam) > 0.01){
+      const fark = Number(period.bill_energy) - kayitliToplam;
+      farkHtml = `<div class="alert-box">Kayıtlı toplam ${kayitliToplam.toFixed(1)} kW idi, faturada ${period.bill_energy} kW görünüyor. ${fark>0?'+':''}${fark.toFixed(1)} kW fark, seçilen yönteme göre paylaştırıldı.</div>`;
+    }
+    const totalAmount = (allocations||[]).reduce((s,a)=>s+Number(a.amount),0);
+
+    mainArea.innerHTML = `
+      <button class="back-btn" onclick="history.back()">‹ Geçmiş</button>
+      <div class="card">
+        <h2>${date ? date + ' Faturası' : 'Bu Dönem'}</h2>
+        ${farkHtml}
+        ${!allocations || allocations.length === 0 ? '<div class="empty">Bu dönemde kayıt yok.</div>' : allocations.map(a => `
+          <div class="person-card">
+            <p class="pname">${escapeHtml(personName(a.user_id))}</p>
+            <p class="pkw">${Number(a.usage_energy).toFixed(1)} kW kullandı${totalAmount>0 ? ` · %${((Number(a.amount)/totalAmount)*100).toFixed(0)} pay` : ''}</p>
+            <div class="ptutar"><span class="lbl">Ödeyecek</span>${money(Number(a.amount))}</div>
+          </div>
+        `).join('')}
+        ${period ? `
+          <div class="grand-total">
+            <div class="lbl">Toplam Fatura</div>
+            <div class="amt">${money(Number(period.total_amount))}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }catch(e){
+    mainArea.innerHTML = `
+      <button class="back-btn" onclick="history.back()">‹ Geçmiş</button>
+      <div class="empty">Yüklenemedi.<br>İnterneti kontrol et.</div>
+    `;
+  }
 }
 
 // ---- Back-button support (Android) ----
