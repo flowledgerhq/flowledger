@@ -1302,7 +1302,7 @@ function renderGiris(){
     </div>
     <div class="card pending-focus" id="pendingCard" style="display:none;">
       <h2 id="pendingTitle">Açık Kullanım</h2>
-      <p class="pending-hint">Pompa kullanımda. İşin bittiğinde kapanış sayaç değerini gir.</p>
+      <p class="pending-hint" id="pendingHint">Pompa kullanımda. İşin bittiğinde kapanış sayaç değerini gir.</p>
       <div id="pendingList"></div>
     </div>
     <div class="card">
@@ -1415,21 +1415,24 @@ function renderPendingList(){
   const cardEl = document.getElementById('pendingCard');
   const titleEl = document.getElementById('pendingTitle');
   const listEl = document.getElementById('pendingList');
+  const hintEl = document.getElementById('pendingHint');
   if(!cardEl || !titleEl || !listEl) return; // screen isn't showing right now
   const pending = pendingUsageSessions().slice().sort((a,b) => new Date(b.started_at) - new Date(a.started_at));
+  const ownPending = pending.some(r => r.user_id === myUserId);
   cardEl.style.display = pending.length === 0 ? 'none' : '';
   titleEl.textContent = pending.length === 1 ? 'Açık Kullanım' : `Açık Kullanımlar (${pending.length})`;
+  if(hintEl) hintEl.style.display = ownPending ? '' : 'none';
   listEl.innerHTML = pending.map(r => `
     <div class="pending-row">
-      <div>
+      <div style="min-width:0; flex:1;">
         <div style="font-size:15px; font-weight:800; color:var(--well); margin-bottom:4px;">${escapeHtml(personName(r.user_id))} suyu kullanıyor</div>
         <div class="pending-meter">${r.meter_start} kW</div>
         <div class="pending-meta">Başlangıç · ${formatDateTime(r.started_at)}</div>
         ${meterGapNote(r.meter_gap)}
       </div>
       ${r.user_id === myUserId
-        ? `<button class="action copper" style="width:auto; padding:12px 20px; font-size:16px;" onclick="completeReading('${r.id}')">Kapat</button>`
-        : `<div style="font-size:13px; color:var(--muted); text-align:right; max-width:120px;">Kapatmayı ${escapeHtml(personName(r.user_id))} yapacak</div>`}
+        ? `<button class="action copper" style="width:auto; padding:12px 20px; font-size:16px; flex:0 0 auto;" onclick="completeReading('${r.id}')">Kapat</button>`
+        : ''}
     </div>
   `).join('');
   const newCard = document.getElementById('newReadingCard');
