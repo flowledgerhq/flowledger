@@ -1305,7 +1305,7 @@ function renderGiris(){
 // açma alanını onunla dolduruyor — sayaç zincirinin sürekliliğini erken
 // gösteriyor. Ekran kapatılıp yeniden açılmadıkça tekrar sorgulanmıyor
 // (manualStartContext bu ekranın state'i, renderGiris() sıfırlıyor).
-async function loadManualStartContext(){
+async function loadManualStartContext(forceSuggestedValue=false){
   if(isLoadingManualStartContext) return;
   isLoadingManualStartContext = true;
   const pacmaEl = document.getElementById('pacma');
@@ -1328,7 +1328,7 @@ async function loadManualStartContext(){
     if(currentInput){
       currentInput.disabled = false;
       currentInput.placeholder = 'örn. 2302';
-      if(manualStartContext && manualStartContext.expected_meter_start != null && !currentInput.value){
+      if(manualStartContext && manualStartContext.expected_meter_start != null && (forceSuggestedValue || !currentInput.value)){
         currentInput.value = manualStartContext.expected_meter_start;
         onMeterStartInput();
       }
@@ -1449,7 +1449,7 @@ async function confirmCompleteReading(id){
     await loadAll();
     renderOpenReadingsList();
     renderPendingList();
-    await loadManualStartContext();
+    await loadManualStartContext(true);
   }catch(e){
     toast('Hata oldu, tekrar dene');
     if(btn){ btn.disabled = false; btn.textContent = 'Kaydet'; }
