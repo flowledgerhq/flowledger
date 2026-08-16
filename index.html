@@ -545,7 +545,8 @@ async function afterAuthReady(){
     joinCode = active.groups ? active.groups.join_code : '';
     document.getElementById('groupLabel').textContent = groupName || '—';
     document.getElementById('editProfileBtn').style.display = '';
-    loadAll();
+    await loadAll();
+    restoreScreenFromLocation();
   }catch(e){
     document.getElementById('mainArea').innerHTML = `<div class="empty">Profil yüklenemedi.<br>İnterneti kontrol et.</div>`;
   }
@@ -1792,8 +1793,31 @@ window.addEventListener('popstate', (e) => {
   else renderHome();
 });
 
-// init
-history.replaceState({screen:'home'}, '', location.pathname);
+function screenStateFromHash(){
+  const hash = location.hash || '';
+  if(hash === '#giris') return {screen:'giris'};
+  if(hash === '#fatura') return {screen:'fatura'};
+  if(hash === '#gecmis') return {screen:'gecmis'};
+  if(hash === '#hava') return {screen:'hava'};
+  if(hash.startsWith('#sonuc-')) return {screen:'sonuc', arg:hash.slice('#sonuc-'.length)};
+  return {screen:'home'};
+}
+
+function restoreScreenFromLocation(){
+  const state = screenStateFromHash();
+  history.replaceState(state, '', state.screen === 'home' ? location.pathname : location.hash);
+  if(state.screen === 'giris') renderGiris();
+  else if(state.screen === 'fatura') renderFatura();
+  else if(state.screen === 'gecmis') renderGecmis();
+  else if(state.screen === 'sonuc') renderSonuc(state.arg);
+  else if(state.screen === 'hava') renderHava();
+  else renderHome();
+}
+
+// init — URL hash mevcut ekranın kalıcı navigasyon state'idir. Auth/grup
+// verisi yüklendikten sonra restoreScreenFromLocation() aynı ekranı açar.
+const initialScreenState = screenStateFromHash();
+history.replaceState(initialScreenState, '', location.href);
 initAuth();
 setInterval(() => { if(groupId && kisiAdi) loadAll(true); }, 15000);
 
