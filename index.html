@@ -344,11 +344,16 @@ let currentScreen = 'home';
 let isSavingReading = false;
 let isSavingBill = false;
 
-function toast(msg){
+let toastTimer = null;
+function toast(msg, duration=2600){
   const t = document.getElementById('toast');
+  if(toastTimer) clearTimeout(toastTimer);
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2600);
+  toastTimer = setTimeout(()=>{
+    t.classList.remove('show');
+    toastTimer = null;
+  }, duration);
 }
 // In-page modal replacing native prompt()/confirm(). Standalone/PWA mode
 // (especially iOS "Ana Ekrana Ekle") can render browser-native dialogs
@@ -1329,7 +1334,11 @@ async function loadManualStartContext(){
       }
     }
     const currentBtn = document.getElementById('saveReadingBtn');
-    if(currentBtn){ currentBtn.disabled = false; currentBtn.textContent = 'Kaydet'; }
+    if(currentBtn){
+      const hasPending = pendingUsageSessions().length > 0;
+      currentBtn.disabled = hasPending;
+      currentBtn.textContent = hasPending ? 'Önce Bekleyen Kaydı Kapat' : 'Kaydet';
+    }
   }catch(e){
     const info = document.getElementById('meterContinuityInfo');
     if(info) info.innerHTML = `<p style="font-size:13px; color:var(--warn); margin:-8px 0 18px;">Son sayaç kaydı yüklenemedi. Kaydetmeden önce tekrar dene.</p>`;
@@ -1483,6 +1492,10 @@ function meterGapNote(meterGap){
 
 async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
+  if(pendingUsageSessions().length > 0){
+    toast('Bu kuyu için zaten bekleyen bir kullanım var. Önce onu kapat.', 5000);
+    return;
+  }
   const acma = parseFloat(document.getElementById('pacma').value);
   if(isNaN(acma)){ toast('Açma değerini gir'); return; }
   // Backend zaten reddedecek (METER_START_BELOW_PREVIOUS_END), ama erken
@@ -1510,13 +1523,18 @@ async function addReading(){
     renderGiris();
   }catch(e){
     const m = e.message || '';
+    const isOpenUsageError = m.includes('OPEN_USAGE_ALREADY_EXISTS') || m.includes('idx_usage_sessions_one_open_per_group');
     toast(m.includes('METER_START_BELOW_PREVIOUS_END')
       ? 'Açma değeri son kapanıştan küçük olamaz. Sayacı tekrar kontrol et.'
-      : m.includes('OPEN_USAGE_ALREADY_EXISTS') || m.includes('idx_usage_sessions_one_open_per_group')
+      : isOpenUsageError
         ? 'Bu kuyu için zaten bekleyen bir kullanım var. Önce onu kapat.'
-        : 'Hata oldu, tekrar dene');
+        : 'Hata oldu, tekrar dene', isOpenUsageError ? 5000 : 2600);
   }finally{
     isSavingReading = false;
+    if(btn && document.body.contains(btn)){
+      btn.disabled = pendingUsageSessions().length > 0 || isLoadingManualStartContext;
+      btn.textContent = pendingUsageSessions().length > 0 ? 'Önce Bekleyen Kaydı Kapat' : 'Kaydet';
+    }
   }
 }
 
