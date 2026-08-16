@@ -188,6 +188,17 @@
   }
   .choice-btn.active{background:var(--well); border-color:var(--well); color:#fff;}
   .choice-help{font-size:14px; color:var(--muted); margin:-10px 0 18px;}
+  .bill-summary{background:var(--paper-warm); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; gap:12px;}
+  .bill-summary .bs-label{font-size:12px; color:var(--muted);}
+  .bill-summary .bs-value{font-size:24px; font-weight:800; color:var(--copper-2); font-variant-numeric:tabular-nums;}
+  .bill-section-title{font-size:13px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:4px 0 12px;}
+  .bill-note{font-size:12px; color:var(--muted-soft); margin:-10px 0 16px; line-height:1.45;}
+  .bill-methods{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .bill-method{border:2px solid var(--line); border-radius:12px; padding:12px; cursor:pointer; background:var(--surface);}
+  .bill-method .bm-title{font-size:15px; font-weight:800; margin-bottom:3px;}
+  .bill-method .bm-desc{font-size:12px; color:var(--muted); line-height:1.35;}
+  .bill-method.active{border-color:var(--well); background:var(--paper-warm);}
+  .bill-method.active .bm-title{color:var(--well);}
 
   .person-card{
     background:var(--paper-warm); border:2px solid var(--line); border-radius:14px;
@@ -1599,27 +1610,40 @@ function renderFatura(){
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
     <div class="card">
       <h2>Fatura Gir</h2>
-      <p style="font-size:15px; color:var(--muted); margin:0 0 16px;">Şu ana kadarki kayıtlı kullanım: <b style="color:var(--copper-2)">${kayitliToplam.toFixed(1)} kW</b></p>
+      <div class="bill-summary">
+        <div>
+          <div class="bs-label">Bu dönemde kayıtlı kullanım</div>
+          <div class="bs-value">${kayitliToplam.toFixed(1)} kW</div>
+        </div>
+      </div>
+
+      <div class="bill-section-title">Fatura Bilgileri</div>
       <div class="field">
         <label for="billDate">Fatura Tarihi</label>
         <input type="date" id="billDate" value="${todayDateStr()}">
       </div>
-      <p style="font-size:13px; color:var(--muted-soft); margin:-12px 0 18px;">Faturanın üzerindeki tarihi gir — geç giriyorsan bile gerçek tarihi seç, sistem sulamaları doğru döneme ayırır.</p>
+      <p class="bill-note">Faturanın üzerindeki gerçek tarihi seç. Geç girsen bile sistem sulamaları doğru döneme ayırır.</p>
       <div class="field">
         <label for="billTotal">Fatura Tutarı (TL)</label>
         <input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060">
       </div>
       <div class="field">
-        <label for="billKw">Faturadaki Toplam kW (biliyorsan)</label>
-        <input type="number" id="billKw" inputmode="decimal" placeholder="boş bırakabilirsin">
+        <label for="billKw">Faturadaki Toplam kW <span style="font-weight:500; color:var(--muted);">(isteğe bağlı)</span></label>
+        <input type="number" id="billKw" inputmode="decimal" placeholder="Bilmiyorsan boş bırak">
       </div>
-      <label>Fark Çıkarsa Nasıl Paylaştırılsın?</label>
-      <div class="choice-row">
-        <div class="choice-btn active" id="mOransal" onclick="setBillMethod('oransal')">Kullanıma Göre</div>
-        <div class="choice-btn" id="mEsit" onclick="setBillMethod('esit')">Eşit Paylaş</div>
+
+      <div class="bill-section-title">Sayaç Farkını Paylaştır</div>
+      <div class="bill-methods">
+        <div class="bill-method active" id="mOransal" onclick="setBillMethod('oransal')">
+          <div class="bm-title">Kullanıma Göre</div>
+          <div class="bm-desc">Çok kullanan farktan daha çok pay alır.</div>
+        </div>
+        <div class="bill-method" id="mEsit" onclick="setBillMethod('esit')">
+          <div class="bm-title">Eşit Paylaş</div>
+          <div class="bm-desc">Fark kullanıcılar arasında eşit bölünür.</div>
+        </div>
       </div>
-      <div class="choice-help">"Kullanıma göre": çok kullanan farktan da çok pay alır. "Eşit paylaş": fark herkese eşit bölünür.</div>
-      <button class="action primary" id="saveBillBtn" onclick="submitBill()">Dönemi Kapat</button>
+      <button class="action primary" style="margin-top:18px;" id="saveBillBtn" onclick="submitBill()">Dönemi Kapat</button>
     </div>
   `;
 }
