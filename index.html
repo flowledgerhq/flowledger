@@ -1427,7 +1427,9 @@ function renderPendingList(){
         <div class="pending-meta">Başlangıç · ${formatDateTime(r.started_at)}</div>
         ${meterGapNote(r.meter_gap)}
       </div>
-      <button class="action copper" style="width:auto; padding:12px 20px; font-size:16px;" onclick="completeReading('${r.id}')">Kapat</button>
+      ${r.user_id === myUserId
+        ? `<button class="action copper" style="width:auto; padding:12px 20px; font-size:16px;" onclick="completeReading('${r.id}')">Kapat</button>`
+        : `<div style="font-size:13px; color:var(--muted); text-align:right; max-width:120px;">Kapatmayı ${escapeHtml(personName(r.user_id))} yapacak</div>`}
     </div>
   `).join('');
   const newCard = document.getElementById('newReadingCard');
@@ -1437,6 +1439,10 @@ function renderPendingList(){
 function completeReading(id){
   const row = cache.usageSessions.find(o => o.id === id);
   if(!row) return;
+  if(row.user_id !== myUserId){
+    toast(`Bu kullanımı ${personName(row.user_id)} başlattı. Kapatma değerini yalnızca o girebilir.`, 5000);
+    return;
+  }
   showModal(`
     <h2>Kapatma Değeri</h2>
     <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${escapeHtml(personName(row.user_id))} için (açma: ${row.meter_start} kW)</p>
@@ -1452,6 +1458,11 @@ function completeReading(id){
 async function confirmCompleteReading(id){
   const row = cache.usageSessions.find(o => o.id === id);
   if(!row) return;
+  if(row.user_id !== myUserId){
+    hideModal();
+    toast(`Bu kullanımı ${personName(row.user_id)} başlattı. Kapatma değerini yalnızca o girebilir.`, 5000);
+    return;
+  }
   const val = document.getElementById('modalKapatma').value;
   const kapatma = parseFloat(val);
   if(isNaN(kapatma)){ toast('Geçerli bir sayı gir'); return; }
@@ -1473,7 +1484,10 @@ async function confirmCompleteReading(id){
     renderPendingList();
     await loadManualStartContext(true);
   }catch(e){
-    toast('Hata oldu, tekrar dene');
+    const m = e.message || '';
+    toast(m.includes('SESSION_NOT_OWNER')
+      ? `Bu kullanımı ${personName(row.user_id)} başlattı. Kapatma değerini yalnızca o girebilir.`
+      : 'Hata oldu, tekrar dene', m.includes('SESSION_NOT_OWNER') ? 5000 : 2600);
     if(btn){ btn.disabled = false; btn.textContent = 'Kaydet'; }
   }
 }
