@@ -331,6 +331,12 @@ let cache = { usageSessions: [], billingPeriods: [] };
 // artık isim değil user_id taşıyor, isimler profiles'tan ayrıca çekiliyor.
 let profilesCache = {};
 let billMethod = 'oransal';
+// Manuel sayaç sürekliliği: get_manual_usage_start_context() RPC'sinden
+// gelen {expected_meter_start, previous_session_id, previous_user_id,
+// previous_ended_at} ya da hiç önceki tamamlanmış kullanım yoksa null.
+// Yalnızca "Okuma Ekle" ekranı açıkken doldurulur (gereksiz tekrar sorgu
+// önlensin diye ekran state'i olarak tutuluyor, global cache değil).
+let manualStartContext = null;
 // tracks what's on screen so background refresh doesn't yank the user away.
 // screens: 'home' | 'gecmis' | { name:'sonuc', arg:<periodIndex> } | 'giris' | 'fatura' (last two: paused, no auto-redraw)
 let currentScreen = 'home';
@@ -1257,6 +1263,7 @@ function renderHome(){
 
 function renderGiris(){
   currentScreen = 'giris';
+  manualStartContext = null;
 
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
@@ -1265,10 +1272,12 @@ function renderGiris(){
       <p style="font-size:15px; color:var(--muted); margin:-6px 0 18px;">
         Giriş yapan: <b style="color:var(--well)">${escapeHtml(kisiAdi)}</b>
       </p>
+      <div id="meterContinuityInfo"></div>
       <div class="field">
         <label for="pacma">Açma Değeri (kW)</label>
-        <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302">
+        <input type="number" id="pacma" inputmode="decimal" placeholder="örn. 2302" oninput="onMeterStartInput()">
       </div>
+      <div id="meterDiffWarning"></div>
       <button class="action copper" id="saveReadingBtn" onclick="addReading()">Kaydet</button>
     </div>
     <div class="card" id="pendingCard" style="display:none;">
@@ -1283,6 +1292,74 @@ function renderGiris(){
   `;
   renderOpenReadingsList();
   renderPendingList();
+  loadManualStartContext();
+}
+
+// Ekran açılır açılmaz son tamamlanmış kullanımın kapanışını (varsa) çekip
+// açma alanını onunla dolduruyor — sayaç zincirinin sürekliliğini erken
+// gösteriyor. Ekran kapatılıp yeniden açılmadıkça tekrar sorgulanmıyor
+// (manualStartContext bu ekranın state'i, renderGiris() sıfırlıyor).
+async function loadManualStartContext(){
+  try{
+    const { data, error } = await sb.rpc('get_manual_usage_start_context', { p_group_id: groupId });
+    if(error) throw error;
+    const ctx = data && data[0];
+    manualStartContext = ctx || null;
+    if(manualStartContext && manualStartContext.previous_user_id){
+      await ensureProfilesLoaded([manualStartContext.previous_user_id]);
+    }
+    renderMeterContinuityInfo();
+    // Beklenen değer varsa açma alanını onunla dolduruyoruz — ama
+    // readonly değil, kullanıcı fiziksel sayaçta farklı bir değer
+    // görüyorsa gerçek değeri girebilmeli.
+    const pacmaEl = document.getElementById('pacma');
+    if(pacmaEl && manualStartContext && manualStartContext.expected_meter_start != null && !pacmaEl.value){
+      pacmaEl.value = manualStartContext.expected_meter_start;
+      onMeterStartInput();
+    }
+  }catch(e){
+    // sessizce geç — ekran normal (context'siz) haliyle çalışmaya devam eder
+  }
+}
+
+function renderMeterContinuityInfo(){
+  const el = document.getElementById('meterContinuityInfo');
+  if(!el) return;
+  if(!manualStartContext){
+    el.innerHTML = `<p style="font-size:13px; color:var(--muted-soft); margin:-8px 0 18px;">Bu grup için ilk sayaç kaydı. Panodaki mevcut değeri gir.</p>`;
+    return;
+  }
+  const ctx = manualStartContext;
+  el.innerHTML = `
+    <div style="background:var(--paper-warm); border:2px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:16px;">
+      <div style="font-size:13px; color:var(--muted); margin-bottom:2px;">Son kayıt</div>
+      <div style="font-size:15px; font-weight:700;">${escapeHtml(personName(ctx.previous_user_id))} · ${formatDateTime(ctx.previous_ended_at)}</div>
+      <div style="font-size:14px; color:var(--muted); margin-top:2px;">Kapanış: ${ctx.expected_meter_start} kW</div>
+    </div>
+  `;
+}
+
+// Kullanıcı yazarken canlı fark gösterimi. Backend'in nihai kontrolü
+// (METER_START_BELOW_PREVIOUS_END) her zaman geçerli — burası yalnızca
+// UX katmanı, kaydetmeden önce erken geri bildirim.
+function onMeterStartInput(){
+  const warnEl = document.getElementById('meterDiffWarning');
+  if(!warnEl) return;
+  if(!manualStartContext || manualStartContext.expected_meter_start == null){
+    warnEl.innerHTML = '';
+    return;
+  }
+  const expected = Number(manualStartContext.expected_meter_start);
+  const val = parseFloat(document.getElementById('pacma').value);
+  if(isNaN(val)){ warnEl.innerHTML = ''; return; }
+  if(val < expected){
+    warnEl.innerHTML = `<p style="font-size:14px; color:var(--warn); font-weight:700; margin:-10px 0 18px;">Bu değer son kapanıştan küçük olamaz.<br>Son kayıtlı sayaç: ${expected} kW</p>`;
+  } else if(val > expected){
+    const fark = (val - expected).toFixed(1);
+    warnEl.innerHTML = `<p style="font-size:14px; color:var(--copper-2); font-weight:700; margin:-10px 0 18px;">⚠ Son kayıttan +${fark} kW fark var<br><span style="font-weight:400; color:var(--muted);">Son kayıt: ${expected} · Şimdiki sayaç: ${val}</span></p>`;
+  } else {
+    warnEl.innerHTML = '';
+  }
 }
 
 // Sessions whose meter_end isn't filled in yet (status active/armed).
@@ -1303,6 +1380,7 @@ function renderPendingList(){
       <div>
         <div class="ename">${escapeHtml(personName(r.user_id))}</div>
         <div class="edate">${formatDateTime(r.started_at)} · Açma: ${r.meter_start} kW</div>
+        ${meterGapNote(r.meter_gap)}
       </div>
       <button class="action copper" style="width:auto; padding:8px 16px; font-size:14px;" onclick="completeReading('${r.id}')">Kapat</button>
     </div>
@@ -1366,16 +1444,35 @@ function renderOpenReadingsList(){
       <div>
         <div class="ename">${escapeHtml(personName(r.user_id))}</div>
         <div class="edate">${formatDateTime(r.started_at)} · ${r.meter_start} → ${r.meter_end}</div>
+        ${meterGapNote(r.meter_gap)}
       </div>
       <div class="ediff">${Number(r.energy_used).toFixed(1)} kW</div>
     </div>
   `).join('');
+}
+// Sayaç zinciri sürekliliği: bu oturum önceki tamamlanmış kullanımın
+// kapanışından daha yüksek bir açma değeriyle başlatıldıysa (meter_gap),
+// hangi iki kullanım arasında oluştuğu bu satırla görünür kılınıyor.
+// Suçlayıcı bir dil kullanılmıyor — nötr bir "fark var" notu.
+// meter_gap negatif olamaz (backend DB seviyesinde engelliyor); yine de
+// eski/test verisinde görülürse sessizce yok sayılıyor, crash edilmiyor.
+function meterGapNote(meterGap){
+  const gap = Number(meterGap);
+  if(!meterGap || isNaN(gap) || gap <= 0) return '';
+  return `<div class="edate" style="color:var(--copper-2);">Sayaç farkı: +${gap.toFixed(1)} kW</div>`;
 }
 
 async function addReading(){
   if(isSavingReading) return; // ignore double-taps while a save is already in flight
   const acma = parseFloat(document.getElementById('pacma').value);
   if(isNaN(acma)){ toast('Açma değerini gir'); return; }
+  // Backend zaten reddedecek (METER_START_BELOW_PREVIOUS_END), ama erken
+  // ve net bir geri bildirim için burada da kontrol ediyoruz — RPC'yi
+  // baştan hiç çağırmıyoruz.
+  if(manualStartContext && manualStartContext.expected_meter_start != null && acma < Number(manualStartContext.expected_meter_start)){
+    toast('Açma değeri son kapanıştan küçük olamaz. Sayacı tekrar kontrol et.');
+    return;
+  }
 
   isSavingReading = true;
   const btn = document.getElementById('saveReadingBtn');
@@ -1384,13 +1481,19 @@ async function addReading(){
     // start_manual_usage RPC: group_id/user_id/created_at gibi güvenilir
     // değerleri backend kendi belirliyor (auth.uid() + aktif üyelik
     // kontrolü) — frontend artık okumalar tablosuna doğrudan yazmıyor.
+    // Backend ayrıca önceki tamamlanmış kullanımın kapanışını yeniden
+    // bulup aynı kontrolü (meter_start < önceki kapanış) kendi de
+    // uyguluyor — frontend'in yukarıdaki kontrolü yalnızca UX katmanı.
     const { error } = await sb.rpc('start_manual_usage', { p_group_id: groupId, p_meter_start: acma });
     if(error) throw error;
     toast('✓ Açma değeri kaydedildi (bekliyor)');
     await loadAll();
     renderGiris();
   }catch(e){
-    toast('Hata oldu, tekrar dene');
+    const m = e.message || '';
+    toast(m.includes('METER_START_BELOW_PREVIOUS_END')
+      ? 'Açma değeri son kapanıştan küçük olamaz. Sayacı tekrar kontrol et.'
+      : 'Hata oldu, tekrar dene');
   }finally{
     isSavingReading = false;
   }
