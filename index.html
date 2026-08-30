@@ -368,6 +368,8 @@ let isLoadingManualStartContext = false;
 let currentScreen = 'home';
 let isSavingReading = false;
 let isSavingBill = false;
+let billPreview = null;
+let billPreviewSeq = 0;
 
 let toastTimer = null;
 function toast(msg, duration=2600){
@@ -1594,61 +1596,41 @@ async function addReading(){
 
 function renderFatura(){
   currentScreen = 'fatura';
-  const openReadings = openUsageSessions();
-  const kayitliToplam = openReadings.reduce((s,r) => s + Number(r.energy_used || 0), 0);
-
-  if(openReadings.length === 0){
-    document.getElementById('mainArea').innerHTML = `
-      <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
-      <div class="card">
-        <h2>Fatura Gir</h2>
-        <div class="empty">Bu dönemde henüz hiç okuma girilmedi.<br>Önce "Okuma Ekle" ile en az bir kayıt gir.</div>
-      </div>
-    `;
-    return;
-  }
-
   billMethod = 'oransal';
+  billPreview = null;
   document.getElementById('mainArea').innerHTML = `
     <button class="back-btn" onclick="history.back()">‹ Ana Menü</button>
-    <div class="card">
-      <h2>Fatura Gir</h2>
-      <div class="bill-summary">
-        <div>
-          <div class="bs-label">Bu dönemde kayıtlı kullanım</div>
-          <div class="bs-value">${kayitliToplam.toFixed(1)} kW</div>
-        </div>
-      </div>
-
+    <div class="card"><h2>Fatura Gir</h2>
+      <div class="bill-summary"><div><div class="bs-label">Seçilen fatura döneminde kullanım</div><div class="bs-value" id="billPreviewValue">Hesaplanıyor…</div><div class="bill-note" id="billPreviewNote" style="margin:5px 0 0;">Fatura tarihine göre dönem kontrol ediliyor.</div></div></div>
       <div class="bill-section-title">Fatura Bilgileri</div>
-      <div class="field">
-        <label for="billDate">Fatura Tarihi</label>
-        <input type="date" id="billDate" value="${todayDateStr()}">
-      </div>
-      <p class="bill-note">Faturanın üzerindeki gerçek tarihi seç. Geç girsen bile sistem sulamaları doğru döneme ayırır.</p>
-      <div class="field">
-        <label for="billTotal">Fatura Tutarı (TL)</label>
-        <input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060">
-      </div>
-      <div class="field">
-        <label for="billKw">Faturadaki Toplam kW <span style="font-weight:500; color:var(--muted);">(isteğe bağlı)</span></label>
-        <input type="number" id="billKw" inputmode="decimal" placeholder="Bilmiyorsan boş bırak">
-      </div>
-
+      <div class="field"><label for="billDate">Fatura Tarihi</label><input type="date" id="billDate" value="${todayDateStr()}" onchange="refreshBillPreview()"></div>
+      <p class="bill-note">Faturanın üzerindeki gerçek tarihi seç. Dönem bu tarihin saat 12:00 sınırında kapanır; geç girmen hesabı değiştirmez.</p>
+      <div class="field"><label for="billTotal">Fatura Tutarı (TL)</label><input type="number" id="billTotal" inputmode="decimal" placeholder="örn. 19060"></div>
+      <div class="field"><label for="billKw">Faturadaki Toplam kW <span style="font-weight:500; color:var(--muted);">(isteğe bağlı)</span></label><input type="number" id="billKw" inputmode="decimal" placeholder="Bilmiyorsan boş bırak"></div>
       <div class="bill-section-title">Sayaç Farkını Paylaştır</div>
-      <div class="bill-methods">
-        <div class="bill-method active" id="mOransal" onclick="setBillMethod('oransal')">
-          <div class="bm-title">Kullanıma Göre</div>
-          <div class="bm-desc">Çok kullanan farktan daha çok pay alır.</div>
-        </div>
-        <div class="bill-method" id="mEsit" onclick="setBillMethod('esit')">
-          <div class="bm-title">Eşit Paylaş</div>
-          <div class="bm-desc">Fark kullanıcılar arasında eşit bölünür.</div>
-        </div>
-      </div>
-      <button class="action primary" style="margin-top:18px;" id="saveBillBtn" onclick="submitBill()">Dönemi Kapat</button>
-    </div>
-  `;
+      <div class="bill-methods"><div class="bill-method active" id="mOransal" onclick="setBillMethod('oransal')"><div class="bm-title">Kullanıma Göre</div><div class="bm-desc">Çok kullanan farktan daha çok pay alır.</div></div><div class="bill-method" id="mEsit" onclick="setBillMethod('esit')"><div class="bm-title">Eşit Paylaş</div><div class="bm-desc">Fark kullanıcılar arasında eşit bölünür.</div></div></div>
+      <button class="action primary" style="margin-top:18px;" id="saveBillBtn" onclick="submitBill()" disabled>Dönemi Kapat</button>
+    </div>`;
+  refreshBillPreview();
+}
+async function refreshBillPreview(){
+  if(currentScreen !== 'fatura') return null;
+  const dateEl=document.getElementById('billDate'), valueEl=document.getElementById('billPreviewValue'), noteEl=document.getElementById('billPreviewNote'), saveBtn=document.getElementById('saveBillBtn');
+  if(!dateEl||!valueEl||!noteEl||!saveBtn) return null;
+  const billDate=dateEl.value, seq=++billPreviewSeq; billPreview=null; saveBtn.disabled=true; valueEl.textContent='Hesaplanıyor…'; noteEl.textContent='Fatura tarihine göre dönem kontrol ediliyor.';
+  if(!billDate){valueEl.textContent='—';noteEl.textContent='Fatura tarihini seç.';return null;}
+  try{
+    const {data,error}=await sb.rpc('preview_billing_period',{p_group_id:groupId,p_bill_date:billDate}); if(error) throw error;
+    if(seq!==billPreviewSeq||currentScreen!=='fatura') return null;
+    const preview=data&&data[0]; if(!preview) throw new Error('EMPTY_BILLING_PREVIEW'); billPreview={...preview,billDate};
+    const energy=Number(preview.recorded_period_energy||0); valueEl.textContent=`${energy.toFixed(1)} kW`;
+    if(!preview.cutoff_reached) noteEl.textContent='Bu fatura tarihinin 12:00 dönem sınırı henüz gelmedi.';
+    else if(preview.later_period_exists) noteEl.textContent='Bu tarihten sonrası için zaten kapatılmış bir dönem var. Daha eski tarihli fatura girilemez.';
+    else if(preview.open_usage_crosses_cutoff) noteEl.textContent='Bu döneme ait devam eden kullanım var. Önce kapanış değerini gir.';
+    else if(energy<=0){noteEl.textContent='Bu dönemde paylaştırılabilecek kayıtlı kullanım yok. Fatura kaydedilirse “Dağıtım bekliyor” olarak saklanır.';saveBtn.disabled=false;}
+    else{noteEl.textContent=`${Number(preview.recorded_user_count||0)} kullanıcının dönem içindeki kullanımı paylaştırılacak.`;saveBtn.disabled=false;}
+    return billPreview;
+  }catch(e){if(seq!==billPreviewSeq||currentScreen!=='fatura')return null;valueEl.textContent='—';noteEl.textContent='Dönem hesabı kontrol edilemedi. Tekrar dene.';saveBtn.disabled=true;return null;}
 }
 function setBillMethod(m){
   billMethod = m;
@@ -1657,16 +1639,16 @@ function setBillMethod(m){
 }
 async function submitBill(){
   if(isSavingBill) return;
-  const billDate = document.getElementById('billDate').value;
-  const total = parseFloat(document.getElementById('billTotal').value);
-  if(!billDate){ toast('Fatura tarihini seç'); return; }
-  if(isNaN(total) || total <= 0){ toast('Fatura tutarını gir'); return; }
-  showModal(`
-    <h2>Dönemi Kapat</h2>
-    <p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${money(total)} tutarında, ${billDate.split('-').reverse().join('.')} tarihli fatura kaydedilsin mi?<br><b style="color:var(--warn)">Bu işlem geri alınamaz.</b></p>
-    <button class="action primary" id="modalConfirmBillBtn" onclick="confirmSubmitBill()">Evet, Dönemi Kapat</button>
-    <button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>
-  `);
+  const billDate=document.getElementById('billDate').value, total=parseFloat(document.getElementById('billTotal').value);
+  if(!billDate){toast('Fatura tarihini seç');return;} if(isNaN(total)||total<=0){toast('Fatura tutarını gir');return;}
+  if(!billPreview||billPreview.billDate!==billDate) await refreshBillPreview();
+  if(!billPreview||billPreview.billDate!==billDate){toast('Fatura dönemi kontrol edilemedi');return;}
+  if(!billPreview.cutoff_reached){toast('Bu faturanın 12:00 dönem sınırı henüz gelmedi.',5000);return;}
+  if(billPreview.later_period_exists){toast('Bu tarihten sonrası için kapatılmış bir dönem var. Daha eski tarihli fatura girilemez.',5000);return;}
+  if(billPreview.open_usage_crosses_cutoff){toast('Bu döneme ait devam eden kullanımı önce kapat.',5000);return;}
+  const noUsage=Number(billPreview.recorded_period_energy||0)<=0;
+  const warning=noUsage?'<b style="color:var(--warn)">Bu dönemde paylaştırılabilecek kullanım yok.</b><br>Fatura kaydedilecek ve dönem sınırı korunacak, ancak tutar kimseye dağıtılmayacak. Geçmişte “Dağıtım bekliyor” olarak görünecek.':'<b style="color:var(--warn)">Bu işlem geri alınamaz.</b>';
+  showModal(`<h2>${noUsage?'Faturayı Dağıtımsız Kaydet':'Dönemi Kapat'}</h2><p style="font-size:15px; color:var(--muted); margin:0 0 18px;">${money(total)} tutarında, ${billDate.split('-').reverse().join('.')} tarihli fatura kaydedilsin mi?<br>${warning}</p><button class="action primary" id="modalConfirmBillBtn" onclick="confirmSubmitBill()">${noUsage?'Evet, Faturayı Kaydet':'Evet, Dönemi Kapat'}</button><button class="action ghost" style="margin-top:10px;" onclick="hideModal()">Vazgeç</button>`);
 }
 async function confirmSubmitBill(){
   if(isSavingBill) return;
@@ -1688,9 +1670,9 @@ async function confirmSubmitBill(){
       p_bill_energy: billKw, p_allocation_method: billMethod
     });
     if(error) throw error;
-    const period = data && data[0];
+    const period = Array.isArray(data) ? data[0] : data;
     hideModal();
-    toast('✓ Dönem kapatıldı');
+    toast(period && period.status === 'unallocated' ? '✓ Fatura kaydedildi · Dağıtım bekliyor' : '✓ Dönem kapatıldı', period && period.status === 'unallocated' ? 4500 : 2600);
     await loadAll();
     if(period) goSonuc(period.id);
     else goGecmis();
@@ -1727,7 +1709,7 @@ function renderGecmis(){
           <div class="pnum">${String(periods.length-i).padStart(2,'0')}</div>
           <div class="pbody">
             <div class="pdate">${date}</div>
-            <div class="ptotal">${money(Number(p.total_amount))}</div>
+            <div class="ptotal">${money(Number(p.total_amount))}${p.status === 'unallocated' ? ' · Dağıtım bekliyor' : ''}</div>
           </div>
         </div>
       `;
@@ -1761,13 +1743,18 @@ async function renderSonuc(billingPeriodId){
       farkHtml = `<div class="alert-box">Kayıtlı toplam ${kayitliToplam.toFixed(1)} kW idi, faturada ${period.bill_energy} kW görünüyor. ${fark>0?'+':''}${fark.toFixed(1)} kW fark, seçilen yönteme göre paylaştırıldı.</div>`;
     }
     const totalAmount = (allocations||[]).reduce((s,a)=>s+Number(a.amount),0);
+    const isUnallocated = period && period.status === 'unallocated';
+    const allocationStateHtml = isUnallocated
+      ? `<div class="alert-box"><b>Dağıtım yapılmadı.</b><br>Bu fatura döneminde paylaştırılabilecek kayıtlı kullanım bulunmadığı için tutar hiçbir kullanıcıya dağıtılmadı. Fatura ve ${date || 'seçilen tarih'} saat 12:00 dönem sınırı kaydedildi; bu sınırdan sonraki kullanımlar sonraki faturaya aittir.</div>`
+      : '';
 
     mainArea.innerHTML = `
       <button class="back-btn" onclick="history.back()">‹ Geçmiş</button>
       <div class="card">
         <h2>${date ? date + ' Faturası' : 'Bu Dönem'}</h2>
+        ${allocationStateHtml}
         ${farkHtml}
-        ${!allocations || allocations.length === 0 ? '<div class="empty">Bu dönemde kayıt yok.</div>' : allocations.map(a => `
+        ${!allocations || allocations.length === 0 ? (isUnallocated ? '' : '<div class="empty">Bu dönemde kayıt yok.</div>') : allocations.map(a => `
           <div class="person-card">
             <p class="pname">${escapeHtml(personName(a.user_id))}</p>
             <p class="pkw">${Number(a.usage_energy).toFixed(1)} kW kullandı${totalAmount>0 ? ` · %${((Number(a.amount)/totalAmount)*100).toFixed(0)} pay` : ''}</p>
